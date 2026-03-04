@@ -1,0 +1,244 @@
+---
+title: User
+description: User accounts for authentication and role-based access control
+---
+
+## Overview
+
+The User model represents all user accounts in NaaleMV including administrators, vessel operators (crew), and customers. It handles authentication via Laravel Fortify and supports role-based access control. This model is defined in `app/Models/User.php` and uses the `users` database table.
+
+## Database Schema
+
+**Table name**: `users`
+
+The users table was created and modified by these migrations:
+- `database/migrations/2014_10_12_000000_create_users_table.php`
+- `database/migrations/2014_10_12_200000_add_two_factor_columns_to_users_table.php`
+- `database/migrations/2022_08_31_060627_add_lang_feild_in_users.php`
+- `database/migrations/2022_10_22_122138_add_isuser_field_to_users.php`
+
+### Fields
+
+<ResponseField name="id" type="integer" required>
+  Primary key, auto-incrementing user ID
+</ResponseField>
+
+<ResponseField name="fullname" type="string" required>
+  Full name of the user
+</ResponseField>
+
+<ResponseField name="contact" type="integer" required>
+  Contact number - used as the username for authentication
+</ResponseField>
+
+<ResponseField name="email" type="string" required>
+  Email address (must be unique)
+</ResponseField>
+
+<ResponseField name="email_verified_at" type="timestamp" nullable>
+  Timestamp when email was verified (required by Laravel Fortify)
+</ResponseField>
+
+<ResponseField name="password" type="string" required>
+  Hashed password for authentication
+</ResponseField>
+
+<ResponseField name="boatid" type="foreign_key" nullable>
+  Foreign key to vessels table - assigns user to a specific vessel
+</ResponseField>
+
+<ResponseField name="rank" type="string" required>
+  User role/rank - determines permissions and access level
+  
+  Common values:
+  - "admin" - System administrators
+  - "CREW" - Vessel operators and crew members
+  - "customer" - End-user customers
+</ResponseField>
+
+<ResponseField name="status" type="boolean" default="true">
+  User account status - true for active, false for inactive
+</ResponseField>
+
+<ResponseField name="isDhivehi" type="boolean" default="0">
+  Language preference - 0 for English, 1 for Dhivehi
+</ResponseField>
+
+<ResponseField name="remember_token" type="string" nullable>
+  Token for "remember me" functionality
+</ResponseField>
+
+<ResponseField name="created_at" type="timestamp">
+  Record creation timestamp
+</ResponseField>
+
+<ResponseField name="updated_at" type="timestamp">
+  Record last update timestamp
+</ResponseField>
+
+<Note>
+The `contact` field is used as the username field for authentication instead of email, which is common practice in the Maldives.
+</Note>
+
+## Authentication Configuration
+
+From `config/fortify.php:49`:
+
+```php
+// Use contact number as username
+'username' => 'contact',
+```
+
+Email verification is enabled by default. Users must verify their email before accessing the system.
+
+## Usage Examples
+
+### Creating a User
+
+From `SettingController.php:59-85`:
+
+```php
+// Create a new crew member
+User::create([
+    'fullname' => $request['Fname'],
+    'contact' => $request['contact'],
+    'boatid' => auth()->user()->boatid,
+    'rank' => "CREW",
+    'email' => $request['email'],
+    'password' => Hash::make($request['password']),
+])->save();
+```
+
+### Updating User Information
+
+From `SettingController.php:142-166`:
+
+```php
+// Update user details
+$editingUser = User::find($id);
+$editingUser->update([
+    'fullname' => $request['Fname'],
+    'contact' => $request['contact'],
+    'email' => $request['email'],
+    'status' => $request['status'],
+]);
+```
+
+### Changing Password
+
+From `SettingController.php:93-111`:
+
+```php
+// Verify old password and update with new one
+$user = User::find(auth()->user()->id);
+
+if (!Hash::check($request['old_pass'], $user->password)) {
+    // Old password doesn't match
+    return redirect()->back()->with('status_error', 'Password doesent match');
+}
+
+$user->forceFill([
+    'password' => Hash::make($request['new_pass']),
+])->save();
+```
+
+## Relationships
+
+<Expandable title="Vessel">
+  **Type**: belongsTo
+  
+  ```php
+  // Each user belongs to a vessel via boatid foreign key
+  Schema::table('users', function (Blueprint $table) {
+      $table->foreignId('boatid')
+            ->constrained('vessels')
+            ->nullable();
+  });
+  ```
+  
+  Users (except admin) are assigned to a specific vessel. The `boatid` field links to the `vessels` table.
+</Expandable>
+
+<Expandable title="Customer">
+  **Type**: Has one (implicit)
+  
+  When a user has rank "customer", they have an associated customer record in the customers table. The customer record uses the user's contact number to link back.
+</Expandable>
+
+## Role-Based Access Control
+
+The `rank` field determines what features users can access:
+
+### Admin
+- Manage all vessels and users
+- Create islands and atolls
+- View all packages and shipments
+- Access system settings
+
+### CREW (Vessel Operators)
+- Create and manage shipments for their vessel
+- Process collections
+- Manage their vessel's schedule (dathuru)
+- Add crew members to their vessel
+
+### Customer
+- View their own packages and transactions
+- Check vessel schedules
+- View settlement information
+- Track package status
+
+## Language Support
+
+The `isDhivehi` field stores the user's language preference:
+
+From `ShipmentController.php:24`:
+
+```php
+// Determine language for view rendering
+Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+return view("$lang.create", ['allCategories' => $allCategories]);
+```
+
+- `0` (false): English interface
+- `1` (true): Dhivehi interface
+
+## Common Queries
+
+### Get All Crew for a Vessel
+
+```php
+$users = User::where('boatid', auth()->user()->boatid)
+             ->where('rank', '!=', 'customer')
+             ->get();
+```
+
+### Check User Rank
+
+```php
+if (auth()->user()->rank == "customer") {
+    return redirect('/customer/dashboard');
+}
+```
+
+### Get Active Users
+
+```php
+$activeUsers = User::where('status', true)->get();
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="SettingController" icon="gear" href="/api/setting-controller">
+    View methods for managing user accounts
+  </Card>
+  <Card title="Vessel model" icon="ship" href="/api/models/vessel">
+    View the Vessel model that users are assigned to
+  </Card>
+  <Card title="Admin settings guide" icon="sliders" href="/guides/admin-settings">
+    Learn how to manage users as an administrator
+  </Card>
+  <Card title="Authentication" icon="lock" href="/system/configuration#authentication">
+    Configure authentication settings
+  </Card>
+</CardGroup>

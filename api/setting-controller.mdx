@@ -1,0 +1,323 @@
+---
+title: SettingController
+description: Manage system settings including user accounts, schedules (dathuru), and password changes
+---
+
+## Overview
+
+The `SettingController` handles administrative settings for NaaleMV, including user management, vessel schedule (dathuru) management, and password changes. This controller is located at `app/Http/Controllers/SettingController.php`.
+
+<Note>
+"Dathuru" is the Dhivehi word for schedule, referring to vessel departure schedules and routes.
+</Note>
+
+## Methods
+
+### index()
+
+Displays the settings page with user list, islands, and current schedule information.
+
+**Route**: `GET /setting`
+
+**Response**: Returns the settings view with:
+- List of users assigned to the current vessel (excluding customers)
+- All islands ordered by name
+- Current active schedule (dathuru) for the vessel
+
+```php
+public function index()
+{
+    $vessel = vessel::find(auth()->user()->boatid);
+    $DepatrueTime = schedule::where([
+        ['vessel_name', $vessel->name],
+        ['status', '!=', 'COMPLETE']
+    ])->orderByDesc('id')->first();
+    
+    $allIslands = islands::orderBy('name','asc')->get();
+    $users = User::where('boatid', auth()->user()->boatid)
+                 ->where('rank', '!=', 'customer')
+                 ->get();
+    
+    return view("$lang.setting", [
+        'users' => $users,
+        'allIslands' => $allIslands,
+        'DepatrueTime' => $DepatrueTime
+    ]);
+}
+```
+
+**File reference**: SettingController.php:27-35
+
+---
+
+### AddNewUser()
+
+Creates a new crew member account for the vessel.
+
+**Route**: `POST /setting/user`
+
+**Parameters**:
+
+<ParamField path="Fname" type="string" required>
+  Full name of the new user
+</ParamField>
+
+<ParamField path="email" type="string" required>
+  Email address (must be unique)
+</ParamField>
+
+<ParamField path="contact" type="integer" required>
+  Contact number (must be unique, used as username)
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  Password for the new account
+</ParamField>
+
+<ParamField path="password_confirmation" type="string" required>
+  Password confirmation (must match password)
+</ParamField>
+
+**Validation Rules**:
+- Full name: required, string, max 255 characters
+- Email: required
+- Contact: required, integer, must be unique
+- Password: required, must match confirmation
+
+**Business Logic**:
+1. Validates all input fields
+2. Checks if password matches password_confirmation
+3. Creates new user with rank "CREW"
+4. Assigns user to the current vessel (boatid)
+5. Hashes the password before storage
+
+**Example Request**:
+
+```bash
+POST /setting/user
+Content-Type: application/x-www-form-urlencoded
+
+Fname=Ahmed+Hassan&email=ahmed@example.com&contact=7123456&password=securepass123&password_confirmation=securepass123
+```
+
+**Returns**: Redirects to `/setting` with success or error message
+
+**File reference**: SettingController.php:59-85
+
+---
+
+### update()
+
+Updates an existing user's information and optionally changes their password.
+
+**Route**: `PATCH /setting/user/{id}`
+
+**Parameters**:
+
+<ParamField path="id" type="integer" required>
+  User ID to update (from route parameter)
+</ParamField>
+
+<ParamField path="Fname" type="string" required>
+  Updated full name
+</ParamField>
+
+<ParamField path="contact" type="string" required>
+  Updated contact number
+</ParamField>
+
+<ParamField path="email" type="string" required>
+  Updated email address
+</ParamField>
+
+<ParamField path="status" type="string" required>
+  User status (active/inactive)
+</ParamField>
+
+<ParamField path="password" type="string" optional>
+  New password (if changing password)
+</ParamField>
+
+<ParamField path="password_confirmation" type="string" optional>
+  Password confirmation (required if password provided)
+</ParamField>
+
+**Business Logic**:
+1. Finds the user by ID
+2. Updates basic user information (name, contact, email, status)
+3. If password is provided:
+   - Validates that password matches confirmation
+   - Hashes and updates the password
+4. Returns success message
+
+**Example Request**:
+
+```bash
+PATCH /setting/user/15
+Content-Type: application/x-www-form-urlencoded
+
+Fname=Ahmed+Hassan&contact=7123456&email=ahmed@example.com&status=active
+```
+
+**Returns**: Redirects to `/setting` with success or error message
+
+**File reference**: SettingController.php:142-166
+
+---
+
+### ChangePassword()
+
+Changes the password for the currently authenticated user.
+
+**Route**: `POST /setting/change`
+
+**Parameters**:
+
+<ParamField path="old_pass" type="string" required>
+  Current password for verification
+</ParamField>
+
+<ParamField path="new_pass" type="string" required>
+  New password
+</ParamField>
+
+<ParamField path="con_pass" type="string" required>
+  Confirm new password (must match new_pass)
+</ParamField>
+
+**Business Logic**:
+1. Retrieves the authenticated user
+2. Verifies the old password matches the current password
+3. Checks that new password matches confirmation
+4. Updates password with hashed value
+5. Redirects based on user rank (customer vs crew/admin)
+
+**Security Features**:
+- Requires old password verification
+- Password confirmation required
+- Automatic password hashing using Laravel's Hash facade
+
+**Example Request**:
+
+```bash
+POST /setting/change
+Content-Type: application/x-www-form-urlencoded
+
+old_pass=currentpass123&new_pass=newsecurepass456&con_pass=newsecurepass456
+```
+
+**Returns**:
+- For customers: Redirects to `/customer/setting`
+- For crew/admin: Redirects to `/setting`
+
+**File reference**: SettingController.php:93-111
+
+---
+
+### dathuru()
+
+Creates a new vessel schedule (departure schedule).
+
+**Route**: `POST /setting/dathuru`
+
+**Parameters**:
+
+<ParamField path="DI" type="string" required>
+  Dock island (departure island)
+</ParamField>
+
+<ParamField path="VI" type="string" required>
+  Visiting island (destination island)
+</ParamField>
+
+<ParamField path="DDate" type="datetime" required>
+  Departure date and time
+</ParamField>
+
+**Validation Rules**:
+- All fields are required
+
+**Business Logic**:
+1. Validates input
+2. Retrieves vessel information for the authenticated user
+3. Creates new schedule record with:
+   - Departure date
+   - Visiting island
+   - Dock island
+   - Vessel name and contact
+   - Empty status (active schedule)
+
+**Example Request**:
+
+```bash
+POST /setting/dathuru
+Content-Type: application/x-www-form-urlencoded
+
+DI=Male&VI=Hulhumale&DDate=2024-03-15T10:00:00
+```
+
+**Returns**: Redirects to `/setting` with success message
+
+**File reference**: SettingController.php:36-52
+
+---
+
+### dathuruUpdate()
+
+Updates an existing vessel schedule.
+
+**Route**: `PATCH /setting/dathuru/{id}`
+
+**Parameters**:
+
+<ParamField path="id" type="integer" required>
+  Schedule ID to update (from route parameter)
+</ParamField>
+
+<ParamField path="DDate" type="datetime" optional>
+  Updated departure date and time
+</ParamField>
+
+<ParamField path="status" type="string" optional>
+  Schedule status
+</ParamField>
+
+<ParamField path="completed" type="string" optional>
+  Set to "COMPLETE" to mark schedule as completed
+</ParamField>
+
+**Business Logic**:
+- If `completed` is "COMPLETE": marks the schedule as complete
+- Otherwise: updates departure date and/or status
+
+**Example Request**:
+
+```bash
+PATCH /setting/dathuru/42
+Content-Type: application/x-www-form-urlencoded
+
+completed=COMPLETE
+```
+
+**Returns**: Redirects to `/setting` with success message
+
+**File reference**: SettingController.php:167-187
+
+---
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="User model" icon="user" href="/api/models/user">
+    View the User model schema and relationships
+  </Card>
+  <Card title="Schedule model" icon="calendar" href="/api/models/schedule">
+    View the Schedule model for vessel departure tracking
+  </Card>
+  <Card title="Admin settings guide" icon="gear" href="/guides/admin-settings">
+    Learn how to manage users and settings as an administrator
+  </Card>
+  <Card title="Vessel operators guide" icon="ship" href="/guides/vessel-operators">
+    User guide for vessel operators managing schedules
+  </Card>
+</CardGroup>

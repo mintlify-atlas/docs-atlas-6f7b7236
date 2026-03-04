@@ -1,0 +1,154 @@
+---
+title: Atoll
+description: Atoll groupings for organizing islands in the Maldivian archipelago
+---
+
+## Overview
+
+The Atoll model represents the administrative atolls of the Maldives. Atolls are used to group islands for organizational and routing purposes in the shipping system. This model is defined in `app/Models/atoll.php` and uses the `atolls` database table.
+
+<Note>
+The Maldives consists of 26 natural atolls administratively grouped into 20 administrative divisions. NaaleMV uses this atoll structure to organize island destinations.
+</Note>
+
+## Database Schema
+
+**Table name**: `atolls`
+
+The atolls table was created by migration:
+- `database/migrations/2022_09_05_075130_create_atolls_table.php`
+
+### Fields
+
+<ResponseField name="id" type="integer" required>
+  Primary key, auto-incrementing atoll ID
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Name of the atoll (e.g., "MALE", "ADH", "HDH")
+</ResponseField>
+
+<ResponseField name="code" type="string" required>
+  Atoll code - typically a 2-3 letter abbreviation
+</ResponseField>
+
+<ResponseField name="created_at" type="timestamp">
+  Record creation timestamp
+</ResponseField>
+
+<ResponseField name="updated_at" type="timestamp">
+  Record last update timestamp
+</ResponseField>
+
+## Usage Examples
+
+### Auto-Creating Atolls
+
+From `ShipmentController.php:53-75`:
+
+```php
+// Automatically create atoll if it doesn't exist when adding an island
+if (!atoll::where('name', strtoupper($request->atoll))->exists()) {
+    $atoll = new atoll([
+        'name' => strtoupper($request->atoll),
+        'code' => '-',
+    ]);
+    $atoll->save();
+}
+
+// Retrieve the atoll for island creation
+$atoll = atoll::where('name', $request->atoll)->first();
+```
+
+<Note>
+When creating islands through the dashboard, atolls are automatically created if they don't already exist. The code field defaults to '-' and can be updated later.
+</Note>
+
+### Querying Atolls
+
+```php
+// Find atoll by name
+$atoll = atoll::where('name', 'MALE')->first();
+
+// Get all atolls
+$allAtolls = atoll::all();
+
+// Check if atoll exists
+$exists = atoll::where('name', strtoupper($atollName))->exists();
+```
+
+## Relationships
+
+<Expandable title="Islands">
+  **Type**: hasMany
+  
+  An atoll contains multiple islands. Islands are linked to atolls via the `atoll_id` foreign key.
+  
+  ```php
+  // Get all islands in an atoll
+  $islands = islands::where('atoll_id', $atoll->id)->get();
+  ```
+  
+  See the [Island model](/api/models/island) for more details.
+</Expandable>
+
+## Common Maldivian Atolls
+
+Here are some common administrative atoll codes used in the Maldives:
+
+| Atoll Code | Full Name | Region |
+|------------|-----------|--------|
+| MALE | Malé Atoll | Central |
+| HDH | Haa Dhaalu | North |
+| HAA | Haa Alifu | North |
+| ADH | Addu | South |
+| GDH | Gaafu Dhaalu | South |
+| LAAMU | Laamu | South |
+
+## Data Management
+
+### Adding New Atolls
+
+Atolls are typically added automatically when islands are created through the admin dashboard (`/dashboard`). You can also manually insert atoll records:
+
+```php
+atoll::create([
+    'name' => 'HDH',
+    'code' => 'HDH',
+])->save();
+```
+
+### Updating Atoll Codes
+
+If an atoll was created with a placeholder code ('-'), you can update it:
+
+```php
+$atoll = atoll::where('name', 'MALE')->first();
+$atoll->update(['code' => 'K']);
+```
+
+## Integration with Shipping
+
+Atolls are used in the shipping workflow to:
+
+1. **Organize destinations**: Group islands by atoll for route planning
+2. **Package routing**: Determine shipping routes based on destination atoll
+3. **Address validation**: Verify destination islands belong to valid atolls
+4. **Reporting**: Generate reports grouped by atoll
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="Island model" icon="island-tropical" href="/api/models/island">
+    View islands that belong to atolls
+  </Card>
+  <Card title="ShipmentController" icon="box" href="/api/shipment-controller">
+    See how islands and atolls are created
+  </Card>
+  <Card title="Admin settings" icon="gear" href="/guides/admin-settings">
+    Learn how to manage atolls and islands
+  </Card>
+  <Card title="Package tracking" icon="location-dot" href="/features/package-tracking">
+    Understand how atolls are used in package routing
+  </Card>
+</CardGroup>

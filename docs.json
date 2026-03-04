@@ -72,7 +72,8 @@
               "api/customer-controller",
               "api/package-controller",
               "api/collection-controller",
-              "api/category-controller"
+              "api/category-controller",
+              "api/setting-controller"
             ]
           },
           {
@@ -82,7 +83,10 @@
               "api/models/package",
               "api/models/customer",
               "api/models/vessel",
-              "api/models/island"
+              "api/models/island",
+              "api/models/atoll",
+              "api/models/schedule",
+              "api/models/user"
             ]
           }
         ]
