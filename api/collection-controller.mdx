@@ -1,0 +1,478 @@
+---
+title: 'CollectionController'
+description: 'Manages package collection operations, payment updates, and delivery confirmation'
+---
+
+## Overview
+
+The `CollectionController` handles the package collection and delivery process. It manages viewing packages ready for collection, updating payment information at delivery, marking packages as collected, and editing shipment items during the collection phase.
+
+**Location:** `app/Http/Controllers/CollectionController.php`
+
+**Related Models:**
+- [Package](/models/package)
+- [Shipment](/models/shipment)
+- [Customer](/models/customer)
+- [Receivables](/models/receivables)
+- [Category](/models/category)
+
+---
+
+## Methods
+
+### index()
+
+Displays a list of all packages for the current vessel.
+
+**Returns:** View (`dhi.collect` or `eng.collect`) with all packages
+
+**Route:** `GET /collect`
+
+**Authorization:** Requires authenticated user
+
+**Business Logic:**
+1. Retrieves all packages for authenticated user's vessel
+2. Orders packages by ID descending (newest first)
+3. Determines language preference from session
+4. Returns collection view
+
+**Code Example:**
+```php
+public function index()
+{
+    $AllPackage = package::where('vessel_id',auth()->user()->boatid)->orderBy('id','DESC')->get();
+    Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+    return view("$lang.collect",['AllPackage'=>$AllPackage]);
+}
+```
+
+---
+
+### clam()
+
+Displays detailed collection information for a specific package.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+  
+  <ParamField path="packid" type="integer" required>
+    Package ID to view for collection
+  </ParamField>
+</ParamField>
+
+**Returns:** View (`dhi.clam` or `eng.clam`) with package details, customer info, items, and total
+
+**Route:** `GET /clam?packid={id}`
+
+**Business Logic:**
+1. Retrieves package with payment status relationship
+2. Retrieves customer information
+3. Retrieves all shipment items for the package
+4. Calculates total amount (qty × unit_price)
+5. Retrieves all categories for reference
+6. Returns collection detail view
+
+**Response Data:**
+- `load` - Package information with payment status
+- `laodCustomer` - Customer details
+- `itemsLoaded` - All shipment items in package
+- `allCategories` - Available categories
+- `Total` - Calculated total amount
+
+**Code Example:**
+```php
+public function clam(Request $request)
+{
+    $Total = 0;
+    $load = package::with('payment_status')->where('id',$request->packid)->get();
+    $laodCustomer = customer::where('id',$load[0]->customer_id)->get();
+    $itemsLoaded = shipment::where('packages_id',$request->packid)->get();
+    $allCategories = category::all();
+    foreach($itemsLoaded as $item){
+        $Total += $item->unit_price * $item->qty;
+    }
+    Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+    return view("$lang.clam",['load'=>$load,'laodCustomer'=>$laodCustomer,'itemsLoaded'=>$itemsLoaded,'allCategories'=>$allCategories,'Total'=>$Total]);
+}
+```
+
+---
+
+### search()
+
+Searches packages by customer address, destination, or package ID.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+  
+  <ParamField path="q" type="string" required>
+    Search query string
+  </ParamField>
+</ParamField>
+
+**Returns:** JSON array of matching packages
+
+**Route:** `GET /collect/search?q={query}`
+
+**Business Logic:**
+1. If query is empty, returns all packages ordered by status
+2. Searches packages where:
+   - Customer address contains query
+   - Destination (to) contains query
+   - Package ID matches query
+3. Returns results as JSON
+
+**Code Example:**
+```php
+public function search(Request $request)
+{
+    $keyword = $request->q;
+    if($request->q == ""){
+        $result = package::orderBy('status','DESC')->get();
+        return  json_decode($result, true); 
+    }
+    $result = package::where(function ($query) use($keyword) {
+        $query
+            ->where('CustAddress', 'like', '%' . $keyword . '%')
+            ->orWhere('to', 'like', '%' . $keyword . '%')
+            ->orWhere('id', 'like', '%' . $keyword . '%');
+        })->get();
+    return  json_decode($result, true); 
+}
+```
+
+**Example Response:**
+```json
+[
+  {
+    "id": 15,
+    "CustAddress": "Majeedhee Magu, Male",
+    "from": "Male",
+    "to": "Kulhudhuffushi",
+    "status": "LOADED",
+    "customer_id": 5,
+    "vessel_id": 2,
+    "created_at": "2026-03-01T10:30:00.000000Z",
+    "updated_at": "2026-03-01T11:45:00.000000Z"
+  }
+]
+```
+
+---
+
+### complete()
+
+Marks a package as collected and processes payment if needed.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object with payment and collection data
+  
+  <ParamField path="packageID" type="integer" required>
+    Package ID to mark as collected
+  </ParamField>
+  
+  <ParamField path="payOption" type="string" required>
+    Payment status: "POD", "NOW", or payment already exists
+  </ParamField>
+  
+  <ParamField path="payType" type="string">
+    Payment type: "CASH" or "TRANSFER" (required if payOption is "NOW")
+  </ParamField>
+  
+  <ParamField path="shipmentTotal" type="decimal" required>
+    Total amount for the shipment
+  </ParamField>
+  
+  <ParamField path="paySlip" type="file">
+    Payment slip image (required for TRANSFER payment)
+  </ParamField>
+</ParamField>
+
+**Returns:** Redirect to `/clam?packid={id}` with success or error message
+
+**Route:** `POST /clam`
+
+**Business Logic:**
+
+1. **If payOption is "POD":**
+   - Returns error: "Update payment details before Marking collected"
+   - Does not mark as collected
+
+2. **If payOption is "NOW":**
+   - For "CASH": Creates receivable without slip
+   - For "TRANSFER": 
+     - Validates slip attachment
+     - Uploads slip image
+     - Creates receivable record
+   - Returns error if slip missing for transfer
+
+3. **If payment already exists:**
+   - Updates total amount if changed
+
+4. **Final step:**
+   - Updates package status to "COLLECTED"
+   - Redirects to collection detail page
+
+**Image Handling (Payment Slips):**
+- Filename format: `{timestamp}_{packageID}.{extension}`
+- Storage location: `public/img/`
+
+**Code Example:**
+```php
+public function complete(Request $request)
+{
+    $Load = true;
+    if($request->payOption == "POD"){
+        return redirect('/clam?packid='.$request->packageID)->with('status_error','Update payment details before Marking collected');
+    }elseif($request->payOption == "NOW"){
+        if($request->payType == "CASH"){
+            $Newreceivables = new receivables ([
+                'packID' => request('packageID'),
+                'paymentType' => Request('payType'),
+                'payslip' => '',
+                'total' => $request->shipmentTotal
+            ]);
+            $Newreceivables->save();
+        }elseif($request->payType == "TRANSFER"){
+            if($request->paySlip != null){
+                $newPath = time() . "_" . request('packageID') . "." . request('paySlip')->extension();
+                request('paySlip')->move(public_path("img"), $newPath);
+
+                $Newreceivables = new receivables ([
+                    'packID' => request('packageID'),
+                    'paymentType' => Request('payType'),
+                    'payslip' => $newPath,
+                    'total' => $request->shipmentTotal
+                ]);
+                $Newreceivables->save();
+            }else{
+                $load = false;
+                return redirect('/clam?packid='.$request->packageID)->with('status_error','Please Attach the slip');
+            }
+        }else {
+            return redirect('/clam?packid='.$request->packageID)->with('status_error','error occured while saving! Try again');
+        }
+    }else{
+        if(receivables::where('packID',$request->packageID)->exists()){
+            $paydetail = receivables::where('packID',$request->packageID)->first();
+            if($request->shipmentTotal != $paydetail->total){
+                $paydetail->update([
+                    'total' => $request->shipmentTotal
+                ]);
+            }
+        }
+    }
+    if ($Load){
+        package::where('id', $request->packageID)->update([
+            'status' => "COLLECTED"
+        ]);
+    }
+    return redirect('/clam?packid='.$request->packageID); 
+}
+```
+
+---
+
+### show()
+
+Display the specified collection (not implemented).
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### edit()
+
+Edits or deletes a shipment item during collection.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+  
+  <ParamField path="submit" type="string" required>
+    Action type: "delete" or "edit"
+  </ParamField>
+  
+  <ParamField path="qty" type="integer">
+    New quantity (for edit action)
+  </ParamField>
+  
+  <ParamField path="unit_price" type="decimal">
+    New unit price (for edit action)
+  </ParamField>
+  
+  <ParamField path="shipmentID" type="integer">
+    Package ID (for edit action redirect)
+  </ParamField>
+</ParamField>
+
+<ParamField path="id" type="integer" required>
+  Shipment item ID to edit or delete
+</ParamField>
+
+**Returns:** 
+- Delete: Redirect to `/create`
+- Edit: Redirect to `/clam?packid={shipmentID}`
+
+**Route:** `PATCH /edit/{id}`
+
+**Business Logic:**
+
+**For "delete" action:**
+1. Finds shipment item by ID
+2. Deletes image file if not default
+3. Deletes shipment record
+4. Redirects to create page
+
+**For "edit" action:**
+1. Updates shipment quantity and unit price
+2. Redirects to collection detail page
+
+**Code Example:**
+```php
+public function edit(Request $request, $id)
+{
+    if($request->submit == "delete"){
+        $deleteItem = shipment::find($id);
+        if($deleteItem->img_path != 'load_default.png'){
+            $fileName = 'item_img/'. $deleteItem->img_path;
+            File::delete($fileName);
+        }
+        $deleteItem->delete();
+        return redirect('/create');
+    }elseif($request->submit == "edit"){
+        shipment::where('id', $id)->update([
+            'qty' => Request('qty'),
+            'unit_price' => Request('unit_price')
+        ]);
+        return redirect('/clam?packid='.$request->shipmentID);
+    }
+}
+```
+
+---
+
+## Package Status Flow
+
+The collection process follows this status flow:
+
+1. **LOADING** - Package being created
+2. **LOADED** - Package finalized and ready for delivery
+3. **COLLECTED** - Package delivered to customer
+
+---
+
+## Payment Processing at Collection
+
+### Payment Options
+
+1. **POD (Pay on Delivery)**
+   - Requires payment before marking as collected
+   - Shows error if attempted without payment update
+
+2. **NOW (Pay Now at Collection)**
+   - Cash: Direct payment without slip
+   - Transfer: Requires payment slip upload
+
+3. **Already Paid**
+   - Updates total if amount changed
+   - No new payment record created
+
+---
+
+## Error Handling
+
+The controller returns these error messages:
+
+- "Update payment details before Marking collected" - POD payment not updated
+- "Please Attach the slip" - Missing payment slip for transfer
+- "error occured while saving! Try again" - Unknown payment type
+
+---
+
+## Session Variables
+
+- `isDhivehi` - Language preference (boolean)
+
+---
+
+## Related Routes
+
+```php
+Route::resource('collect', CollectionController::class);
+Route::get('/collect/search', [CollectionController::class, 'search']);
+Route::post('clam', [CollectionController::class, 'complete']);
+Route::get('clam', [CollectionController::class, 'clam']);
+Route::patch('/edit/{id}', [CollectionController::class,'edit']);
+```
+
+---
+
+## Example Usage
+
+### Viewing Collection List
+
+```http
+GET /collect
+```
+
+### Viewing Package for Collection
+
+```http
+GET /clam?packid=15
+```
+
+### Searching Packages
+
+```http
+GET /collect/search?q=Kulhudhuffushi
+```
+
+### Marking Package as Collected with Cash Payment
+
+```http
+POST /clam
+Content-Type: application/x-www-form-urlencoded
+
+packageID=15
+payOption=NOW
+payType=CASH
+shipmentTotal=750.00
+```
+
+### Marking Package as Collected with Transfer Payment
+
+```http
+POST /clam
+Content-Type: multipart/form-data
+
+packageID=15
+payOption=NOW
+payType=TRANSFER
+shipmentTotal=750.00
+paySlip=[file]
+```
+
+### Editing Shipment Item
+
+```http
+PATCH /edit/23
+Content-Type: application/x-www-form-urlencoded
+
+submit=edit
+qty=10
+unit_price=50.00
+shipmentID=15
+```
+
+### Deleting Shipment Item
+
+```http
+PATCH /edit/23
+Content-Type: application/x-www-form-urlencoded
+
+submit=delete
+```

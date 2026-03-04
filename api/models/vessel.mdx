@@ -1,0 +1,147 @@
+---
+title: 'Vessel Model'
+description: 'Shipping vessels that transport packages between islands'
+---
+
+## Overview
+
+The Vessel model represents boats or ships used to transport packages between islands in the Maldives. Each vessel has a name, destination island, registration number, and operational status. Vessels are assigned to packages for shipment tracking.
+
+## Database Table
+
+**Table name:** `vessels`
+
+## Schema Definition
+
+The vessels table schema is defined in the migration file `2011_01_08_172713_create_vessels_table.php`:
+
+### Columns
+
+<ResponseField name="id" type="bigInteger" required>
+  Auto-incrementing primary key
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Name of the vessel
+</ResponseField>
+
+<ResponseField name="island" type="string" required>
+  Destination island that this vessel services
+</ResponseField>
+
+<ResponseField name="regno" type="string" nullable>
+  Registration number of the vessel. This field is optional
+</ResponseField>
+
+<ResponseField name="status" type="boolean" default="true">
+  Operational status of the vessel. `true` indicates the vessel is active, `false` indicates inactive
+</ResponseField>
+
+<ResponseField name="created_at" type="timestamp">
+  Timestamp when the vessel record was created
+</ResponseField>
+
+<ResponseField name="updated_at" type="timestamp">
+  Timestamp when the vessel record was last updated
+</ResponseField>
+
+## Model Configuration
+
+**Location:** `app/Models/vessel.php`
+
+### Fillable Fields
+
+The following fields are mass-assignable:
+
+```php
+protected $fillable = [
+    'name',
+    'island',
+    'regno',
+    'status',
+];
+```
+
+## Relationships
+
+<Expandable title="hasOne: Package">
+  Defined in `vessel.php:17-20`:
+  
+  ```php
+  public function VesselName()
+  {
+      return $this->hasOne(package::class, 'vessel_id');
+  }
+  ```
+  
+  This relationship retrieves a package assigned to the vessel. Note: This appears to be inverse of the typical relationship - vessels typically have many packages.
+</Expandable>
+
+<Expandable title="hasMany: Packages">
+  A vessel can be assigned to multiple packages for transportation. Packages reference the vessel via the `vessel_id` foreign key.
+</Expandable>
+
+<Expandable title="hasMany: Schedules">
+  Vessels have schedules that define their departure and arrival times. Schedules are linked to vessels for tracking.
+</Expandable>
+
+## Example Usage
+
+### Querying Vessel with Package
+
+From `CustomerController.php:54`:
+
+```php
+$LastPack = package::with('VesselName')
+    ->where([['customer_id', auth()->user()->custid]])
+    ->orderByDesc('id')
+    ->first();
+```
+
+### Assigning Vessel to Package
+
+From `CustomerController.php:165`:
+
+```php
+$newpackage = new package([
+    'CustAddress' => request('CustAddress'),
+    'from' => Request('LFrom'),
+    'to' => Request('ULTo'),
+    'customer_id' => $CustID,
+    'vessel_id' => auth()->user()->boatid,
+]);
+```
+
+### Checking Vessel Schedule
+
+From `CustomerController.php:63-67`:
+
+```php
+$DepatrueTime = schedule::where([
+    ['id', $LastPack->vessel_id],
+    ['status', '!=', 'COMPLETE']
+])
+->orderByDesc('id')
+->first();
+```
+
+## Vessel Status
+
+The `status` field is a boolean that indicates whether the vessel is operational:
+
+- `true` (1): Vessel is active and available for assignments
+- `false` (0): Vessel is inactive or unavailable
+
+## Notes
+
+- The `regno` (registration number) field is nullable, allowing vessels to be registered before obtaining official registration
+- Vessels are typically associated with specific islands, indicating their primary route or destination
+- The relationship between vessels and packages is established through the `vessel_id` foreign key in the packages table
+- User accounts can be linked to specific vessels through the `boatid` field, allowing vessel operators to manage their shipments
+- Vessel schedules track departure times and help customers monitor when their packages will depart
+
+## Related Models
+
+- **Package**: Packages are assigned to vessels for transportation
+- **Schedule**: Vessels have schedules that define departure and arrival times
+- **User**: Users (vessel operators) can be associated with specific vessels

@@ -1,0 +1,150 @@
+---
+title: 'Shipment Model'
+description: 'Shipment items within packages, tracking goods being transported'
+---
+
+## Overview
+
+The Shipment model represents individual items within a package. Each shipment record contains details about the goods being transported, including quantity, pricing, category, and an optional image. Shipments belong to packages and are categorized for organization.
+
+## Database Table
+
+**Table name:** `shipments`
+
+## Schema Definition
+
+The shipments table schema is defined in the migration file `2021_11_31_091825_create_shipments_table.php`:
+
+### Columns
+
+<ResponseField name="id" type="bigInteger" required>
+  Auto-incrementing primary key
+</ResponseField>
+
+<ResponseField name="qty" type="integer" required>
+  Quantity of items in the shipment
+</ResponseField>
+
+<ResponseField name="unit_price" type="decimal(5,2)" required>
+  Unit price per item (supports up to 999.99)
+</ResponseField>
+
+<ResponseField name="img_path" type="string" default="default.jpg">
+  Path to the shipment item image. Defaults to 'default.jpg' if no image is uploaded
+</ResponseField>
+
+<ResponseField name="category_id" type="foreignId" required>
+  Foreign key reference to the categories table. Defines the category of goods being shipped
+</ResponseField>
+
+<ResponseField name="packages_id" type="foreignId" required>
+  Foreign key reference to the packages table. Links the shipment to its parent package
+</ResponseField>
+
+<ResponseField name="created_at" type="timestamp">
+  Timestamp when the shipment record was created
+</ResponseField>
+
+<ResponseField name="updated_at" type="timestamp">
+  Timestamp when the shipment record was last updated
+</ResponseField>
+
+### Constraints
+
+- `category_id` has a foreign key constraint to the `categories` table
+- `packages_id` has a foreign key constraint to the `packages` table
+
+## Model Configuration
+
+**Location:** `app/Models/shipment.php`
+
+### Fillable Fields
+
+The following fields are mass-assignable:
+
+```php
+protected $fillable = [
+    'qty',
+    'unit_price',
+    'img_path',
+    'category_id',
+    'packages_id',
+];
+```
+
+## Relationships
+
+<Expandable title="belongsTo: Category">
+  Each shipment belongs to a category via the `category_id` foreign key. This relationship is used to classify the type of goods being shipped.
+</Expandable>
+
+<Expandable title="belongsTo: Package">
+  Each shipment belongs to a package via the `packages_id` foreign key. Multiple shipments can belong to a single package.
+</Expandable>
+
+## Example Usage
+
+### Creating a New Shipment
+
+From `ShipmentController.php:113-120`:
+
+```php
+$newShipment = new shipment([
+    'qty' => Request('qty'),
+    'unit_price' => Request('unit_price'),
+    'img_path' => $newPath,
+    'category_id' => Request('cateID'),
+    'packages_id' => Request('packID')
+]);
+$newShipment->save();
+```
+
+### Querying Shipments by Package
+
+From `ShipmentController.php:29-31`:
+
+```php
+if (shipment::where('packages_id', Session::get('newpackage')->id)->exists()) {
+    $Shipments = shipment::where('packages_id', Session::get('newpackage')->id)->get();
+}
+```
+
+### Calculating Total Shipment Value
+
+From `ShipmentController.php:30-35`:
+
+```php
+$Total = 0;
+$Shipments = shipment::where('packages_id', Session::get('newpackage')->id)->get();
+foreach($Shipments as $item) {
+    $Total += $item->unit_price * $item->qty;
+}
+```
+
+### Updating a Shipment
+
+From `ShipmentController.php:226-229`:
+
+```php
+shipment::where('id', $request->cateID)->update([
+    'qty' => Request('qty'),
+    'unit_price' => Request('unit_price')
+]);
+```
+
+### Deleting a Shipment
+
+From `ShipmentController.php:220-223`:
+
+```php
+$deleteItem = shipment::find($request->cateID);
+$fileName = 'item_img/'. $deleteItem->img_path;
+File::delete($fileName);
+$deleteItem->delete();
+```
+
+## Notes
+
+- Images are stored in the `item_img` directory with filenames in the format: `{timestamp}_pack_id_{packID}.{extension}`
+- When deleting a shipment, the associated image file should also be deleted from storage
+- The total value of a shipment is calculated as `qty * unit_price`

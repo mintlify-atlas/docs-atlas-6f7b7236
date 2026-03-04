@@ -1,0 +1,204 @@
+---
+title: 'Package Model'
+description: 'Shipping packages that contain multiple shipment items'
+---
+
+## Overview
+
+The Package model represents a shipping package in the NaaleMV system. Each package contains delivery information, status tracking, and is associated with a customer and vessel. Packages serve as containers for multiple shipment items and track the overall delivery process.
+
+## Database Table
+
+**Table name:** `packages`
+
+## Schema Definition
+
+The packages table schema is defined in the migration file `2021_11_30_140612_create_packages_table.php` with an additional field added in `2022_10_22_152411_add_boat_id_to_packages.php`:
+
+### Columns
+
+<ResponseField name="id" type="bigInteger" required>
+  Auto-incrementing primary key
+</ResponseField>
+
+<ResponseField name="CustAddress" type="string" required>
+  Customer's delivery address
+</ResponseField>
+
+<ResponseField name="from" type="string" required>
+  Origin location of the package
+</ResponseField>
+
+<ResponseField name="to" type="string" required>
+  Destination location of the package
+</ResponseField>
+
+<ResponseField name="status" type="string" default="LOADING">
+  Current status of the package. Default is 'LOADING'. Other values include 'LOADED', 'COLLECTED'
+</ResponseField>
+
+<ResponseField name="customer_id" type="foreignId" required>
+  Foreign key reference to the customers table
+</ResponseField>
+
+<ResponseField name="vessel_id" type="foreignId" nullable>
+  Foreign key reference to the vessels table. Added in a later migration and is nullable
+</ResponseField>
+
+<ResponseField name="created_at" type="timestamp">
+  Timestamp when the package record was created
+</ResponseField>
+
+<ResponseField name="updated_at" type="timestamp">
+  Timestamp when the package record was last updated
+</ResponseField>
+
+### Constraints
+
+- `customer_id` has a foreign key constraint to the `customers` table
+- `vessel_id` has a foreign key constraint to the `vessels` table (nullable)
+
+## Model Configuration
+
+**Location:** `app/Models/package.php`
+
+### Fillable Fields
+
+The following fields are mass-assignable:
+
+```php
+protected $fillable = [
+    'CustAddress',
+    'from',
+    'to',
+    'status',
+    'customer_id',
+    'vessel_id',
+];
+```
+
+## Relationships
+
+<Expandable title="hasOne: Payment Status (Receivables)">
+  Defined in `package.php:19-22`:
+  
+  ```php
+  public function payment_status()
+  {
+      return $this->hasOne(receivables::class, 'packID');
+  }
+  ```
+  
+  Each package has one payment record in the receivables table, linked by the `packID` column.
+</Expandable>
+
+<Expandable title="hasOne: Vessel Name">
+  Defined in `package.php:23-26`:
+  
+  ```php
+  public function VesselName()
+  {
+      return $this->hasOne(vessel::class, 'id','vessel_id');
+  }
+  ```
+  
+  Each package is assigned to one vessel. This relationship retrieves the vessel details.
+</Expandable>
+
+<Expandable title="belongsTo: Customer">
+  Each package belongs to a customer via the `customer_id` foreign key.
+</Expandable>
+
+<Expandable title="hasMany: Shipments">
+  A package can contain multiple shipment items. Shipments reference the package via `packages_id`.
+</Expandable>
+
+## Example Usage
+
+### Creating a New Package
+
+From `CustomerController.php:171-178`:
+
+```php
+$newpackage = new package([
+    'CustAddress' => request('CustAddress'),
+    'from' => Request('LFrom'),
+    'to' => Request('ULTo'),
+    'customer_id' => $CustID,
+    'vessel_id' => auth()->user()->boatid,
+]);
+$newpackage->save();
+```
+
+### Updating Package Status
+
+From `PackageController.php:88-90`:
+
+```php
+package::where('id', $request->packageID)->update([
+    'status' => "LOADED"
+]);
+```
+
+### Querying Package with Vessel Information
+
+From `CustomerController.php:54`:
+
+```php
+$LastPack = package::with('VesselName')
+    ->where([['customer_id', auth()->user()->custid]])
+    ->orderByDesc('id')
+    ->first();
+```
+
+### Getting Customer Packages by Status
+
+From `CustomerController.php:55-57`:
+
+```php
+$transaction = package::where('customer_id', auth()->user()->custid)
+    ->orderByDesc('id')
+    ->get();
+    
+$TransColl = package::where([['customer_id', auth()->user()->custid], ['status', 'COLLECTED']])
+    ->orderByDesc('id')
+    ->get();
+```
+
+### Checking if Package is in Loading State
+
+From `CustomerController.php:38-42`:
+
+```php
+if($newpackage->status == "LOADING") {
+    $NewCustomer = customer::where('id', $newpackage->customer_id)->first();
+    Session::put('NewCustomer', $NewCustomer);
+    Session::put('newpackage', $newpackage);
+}
+```
+
+### Updating Package Details
+
+From `CustomerController.php:160-167`:
+
+```php
+package::where('id', Session::get('newpackage')->id)->update([
+    'CustAddress' => request('CustAddress'),
+    'from' => Request('LFrom'),
+    'to' => Request('ULTo'),
+    'customer_id' => $CustID,
+    'vessel_id' => auth()->user()->boatid,
+]);
+```
+
+## Package Status Values
+
+- **LOADING**: Package is being prepared and items are being added
+- **LOADED**: Package is complete and ready for shipment
+- **COLLECTED**: Package has been delivered and collected by the customer
+
+## Notes
+
+- The `vessel_id` field was added in a later migration and is nullable, indicating that packages can be created before being assigned to a vessel
+- Packages in 'LOADING' status represent incomplete packages that are still accepting shipment items
+- Guest customers can create packages with customer_id = 0

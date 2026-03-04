@@ -1,0 +1,298 @@
+---
+title: Getting started
+description: Complete setup instructions for installing and configuring NaaleMV on your server
+---
+
+## Prerequisites
+
+Before installing NaaleMV, ensure your server meets these requirements:
+
+- PHP 7.3 or 8.0+
+- MySQL database server
+- Composer (PHP dependency manager)
+- Node.js and npm (for frontend assets)
+- Web server (Apache/Nginx)
+
+<Note>
+These requirements are based on the Laravel 8 framework. See composer.json for the complete dependency list.
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the NaaleMV source code to your server:
+
+    ```bash
+    git clone <repository-url> naalemv
+    cd naalemv
+    ```
+  </Step>
+
+  <Step title="Install PHP dependencies">
+    Install all required PHP packages using Composer:
+
+    ```bash
+    composer install
+    ```
+
+    This installs:
+    - Laravel Framework 8.65+
+    - Laravel Fortify 1.8+ (authentication)
+    - Laravel Sanctum 2.11+ (API tokens)
+    - Guzzle HTTP client
+    - Additional Laravel packages
+  </Step>
+
+  <Step title="Install Node dependencies">
+    Install frontend build tools and dependencies:
+
+    ```bash
+    npm install
+    ```
+
+    Then compile the frontend assets:
+
+    ```bash
+    npm run production
+    ```
+  </Step>
+
+  <Step title="Configure environment">
+    Copy the example environment file:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edit the `.env` file and configure your database connection:
+
+    ```bash
+    APP_NAME=NaaleMV
+    APP_ENV=production
+    APP_DEBUG=false
+    APP_URL=https://your-domain.com
+
+    DB_CONNECTION=mysql
+    DB_HOST=127.0.0.1
+    DB_PORT=3306
+    DB_DATABASE=naalemvdb
+    DB_USERNAME=your_db_user
+    DB_PASSWORD=your_db_password
+    ```
+
+    <Warning>
+    Set `APP_DEBUG=false` in production to prevent sensitive error information from being displayed.
+    </Warning>
+  </Step>
+
+  <Step title="Configure mail settings">
+    NaaleMV requires email configuration for user verification and notifications. Update your `.env` file:
+
+    ```bash
+    MAIL_DRIVER=smtp
+    MAIL_HOST=smtp.gmail.com
+    MAIL_PORT=587
+    MAIL_USERNAME=your-email@gmail.com
+    MAIL_PASSWORD=your-app-password
+    MAIL_ENCRYPTION=tls
+    MAIL_FROM_NAME=NaaleMV
+    ```
+
+    <Note>
+    Email verification is enabled by default (config/fortify.php:137). Users must verify their email before accessing the system.
+    </Note>
+  </Step>
+
+  <Step title="Generate application key">
+    Generate a unique application encryption key:
+
+    ```bash
+    php artisan key:generate
+    ```
+
+    This sets the `APP_KEY` in your `.env` file, which is used for encrypting session data and other sensitive information.
+  </Step>
+
+  <Step title="Run database migrations">
+    Create all required database tables:
+
+    ```bash
+    php artisan migrate
+    ```
+
+    This creates tables for:
+    - Users and authentication
+    - Customers
+    - Vessels
+    - Packages and shipments
+    - Categories (cargo types)
+    - Atolls and islands
+    - Payment receivables
+    - Schedules
+  </Step>
+
+  <Step title="Set up storage permissions">
+    Link the storage directory for public file access:
+
+    ```bash
+    php artisan storage:link
+    ```
+
+    Set proper permissions for storage and cache directories:
+
+    ```bash
+    chmod -R 775 storage bootstrap/cache
+    chown -R www-data:www-data storage bootstrap/cache
+    ```
+  </Step>
+</Steps>
+
+## Initial configuration
+
+### Create your first admin user
+
+Register your first user through the web interface at `/register`. This user should be configured with:
+
+- Full name
+- Contact number (used as username)
+- Email address (must be verified)
+- Password
+
+<Note>
+The `rank` field in the users table (database/migrations/2014_10_12_000000_create_users_table.php:21) determines user permissions. Set this to an appropriate admin value in the database after registration.
+</Note>
+
+### Set up vessels
+
+Before creating shipments, you need to register vessels. Each vessel record includes:
+
+- Vessel name
+- Registration number (`regno`)
+- Home island
+- Status (active/inactive)
+
+Vessels are defined in app/Models/vessel.php and users are assigned to vessels via the `boatid` field.
+
+### Configure cargo categories
+
+Set up cargo categories with pricing. Each category includes:
+
+- Category name (e.g., "Electronics", "Documents", "Food Items")
+- Default unit price
+- Category image
+
+Categories are stored in the `categories` table (database/migrations/2021_11_28_145122_create_categories_table.php:16).
+
+### Add atolls and islands
+
+Populate the islands database with your service area:
+
+1. Navigate to `/dashboard` as an admin user
+2. Use the island creation form (app/Http/Controllers/ShipmentController.php:53)
+3. Enter:
+   - Atoll name (automatically creates atoll if it doesn't exist)
+   - Island name
+   - Island code
+
+Example islands setup:
+
+```
+Atoll: MALE
+  - Malé (Code: MLE)
+  - Hulhumalé (Code: HLM)
+  - Vilimalé (Code: VLM)
+
+Atoll: GAA
+  - Vilingili (Code: GAA-VIL)
+  - Dhaandhoo (Code: GAA-DHA)
+```
+
+## Verify installation
+
+<Steps>
+  <Step title="Test user authentication">
+    1. Navigate to `/login`
+    2. Enter your contact number and password
+    3. Verify email if prompted
+    4. Confirm you're redirected to the appropriate dashboard
+  </Step>
+
+  <Step title="Check language switching">
+    The platform supports English and Dhivehi. Test that:
+    - Language preference is saved per user
+    - Views switch between `eng` and `dhi` directories
+    - All routes work in both languages (routes/web.php:24)
+  </Step>
+
+  <Step title="Create a test package">
+    As a vessel operator:
+
+    1. Navigate to `/customer` to create a new package
+    2. Enter customer details:
+       - Customer number
+       - Customer name
+       - Delivery address
+       - Origin and destination islands
+    3. Add items to the package via `/create`
+    4. Verify the package status is `LOADING`
+  </Step>
+
+  <Step title="Test payment processing">
+    1. Complete a package to move it to `LOADED` status
+    2. Test cash payment recording
+    3. Test transfer payment with slip upload
+    4. Verify payment records appear in the receivables table
+  </Step>
+</Steps>
+
+## Common issues
+
+### Database connection errors
+
+If you see "could not find driver" errors:
+
+```bash
+# Install PHP MySQL extension
+sudo apt-get install php-mysql
+sudo systemctl restart apache2
+```
+
+### Storage permission errors
+
+If image uploads fail:
+
+```bash
+# Fix storage permissions
+chmod -R 775 storage
+chmod -R 775 public/img
+chmod -R 775 public/item_img
+```
+
+### Email verification not working
+
+Verify your mail settings in `.env` are correct. Test email sending:
+
+```bash
+php artisan tinker
+>>> Mail::raw('Test email', function($msg) { $msg->to('test@example.com')->subject('Test'); });
+```
+
+## Next steps
+
+Now that NaaleMV is installed, you can:
+
+<CardGroup cols={2}>
+  <Card title="Configure users" icon="users" href="/guides/admin-settings">
+    Set up user accounts for vessel operators and customers
+  </Card>
+  <Card title="Package workflow" icon="box" href="/features/package-tracking">
+    Learn the complete package lifecycle from creation to collection
+  </Card>
+  <Card title="Manage vessels" icon="ship" href="/guides/admin-settings">
+    Configure vessels and assign operators
+  </Card>
+  <Card title="Process payments" icon="credit-card" href="/features/collection-delivery">
+    Handle cash and transfer payments with proper documentation
+  </Card>
+</CardGroup>

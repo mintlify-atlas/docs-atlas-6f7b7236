@@ -1,0 +1,668 @@
+---
+title: Database Setup
+description: Complete guide to setting up and managing the NaaleMV database
+---
+
+## Database Overview
+
+NaaleMV uses MySQL 5.7+ as its primary database system. The application manages shipping packages, vessels, customers, and related operations through a relational database schema.
+
+## Creating the Database
+
+### Standard MySQL Installation
+
+```bash
+# Login to MySQL
+mysql -u root -p
+
+# Create database
+CREATE DATABASE naalemvdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+# Create user (optional, recommended for production)
+CREATE USER 'naalemv_user'@'localhost' IDENTIFIED BY 'your_secure_password';
+GRANT ALL PRIVILEGES ON naalemvdb.* TO 'naalemv_user'@'localhost';
+FLUSH PRIVILEGES;
+
+# Exit MySQL
+EXIT;
+```
+
+### Docker Setup
+
+If using the Docker configuration:
+
+```bash
+# Start Docker containers
+docker-compose up -d
+
+# Database is automatically created as 'naalemvdb'
+# Access MySQL in container
+docker exec -it naalemvdb mysql -u root
+
+# Verify database
+SHOW DATABASES;
+```
+
+<Warning>
+The Docker setup uses MySQL 5.7.16 on port **3322** (host) mapped to 3306 (container). Update your `.env` file accordingly:
+```bash
+DB_PORT=3322
+```
+</Warning>
+
+## Running Migrations
+
+Migrations create the database schema automatically.
+
+### Execute Migrations
+
+```bash
+# Run all pending migrations
+php artisan migrate
+
+# Run migrations with confirmation prompt
+php artisan migrate --step
+
+# Force migrations in production (skips confirmation)
+php artisan migrate --force
+```
+
+### Rollback Migrations
+
+```bash
+# Rollback last batch
+php artisan migrate:rollback
+
+# Rollback specific number of migrations
+php artisan migrate:rollback --step=5
+
+# Reset all migrations
+php artisan migrate:reset
+
+# Refresh database (rollback all and re-migrate)
+php artisan migrate:refresh
+
+# Fresh migration (drop all tables and re-migrate)
+php artisan migrate:fresh
+```
+
+<Warning>
+**Destructive Operations**: Commands like `migrate:fresh` and `migrate:refresh` will delete all data. Use with extreme caution in production.
+</Warning>
+
+## Database Schema
+
+The following tables are created during migration:
+
+### Core Tables
+
+#### 1. Users Table
+**Purpose**: Store system users (vessel crew, administrators)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `fullname` | varchar(255) | User's full name |
+| `contact` | integer | Contact number |
+| `boatid` | bigint | Foreign key to vessels (nullable) |
+| `rank` | varchar(255) | User's rank/role |
+| `status` | boolean | Active status (default: true) |
+| `email` | varchar(255) | Unique email address |
+| `email_verified_at` | timestamp | Email verification timestamp |
+| `password` | varchar(255) | Hashed password |
+| `lang` | varchar | User's preferred language |
+| `isuser` | boolean | User type flag |
+| `remember_token` | varchar(100) | Remember me token |
+| `two_factor_secret` | text | 2FA secret (nullable) |
+| `two_factor_recovery_codes` | text | 2FA recovery codes (nullable) |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Relationships**:
+- Belongs to: `vessels` (boatid)
+
+**Migration**: `/database/migrations/2014_10_12_000000_create_users_table.php`
+
+#### 2. Vessels Table
+**Purpose**: Store vessel/boat information
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `name` | varchar(255) | Vessel name |
+| `island` | varchar(255) | Home island |
+| `regno` | varchar(255) | Registration number (nullable) |
+| `status` | boolean | Active status (default: true) |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Migration**: `/database/migrations/2011_01_08_172713_create_vessels_table.php`
+
+#### 3. Customers Table
+**Purpose**: Store customer information
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `CustNumber` | integer | Customer number |
+| `CustName` | varchar(255) | Customer name |
+| `ViberToken` | varchar(255) | Viber notification token |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Migration**: `/database/migrations/2021_11_30_103227_create_customers_table.php`
+
+#### 4. Categories Table
+**Purpose**: Store package categories and pricing
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `cate_name` | varchar(255) | Category name |
+| `unit_price` | decimal(5,2) | Unit price |
+| `img_path` | varchar(255) | Category image path |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Migration**: `/database/migrations/2021_11_28_145122_create_categories_table.php`
+
+#### 5. Packages Table
+**Purpose**: Store shipment packages
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `CustAddress` | varchar(255) | Customer address |
+| `from` | varchar(255) | Origin location |
+| `to` | varchar(255) | Destination location |
+| `status` | varchar(255) | Package status (default: LOADING) |
+| `customer_id` | bigint | Foreign key to customers |
+| `boat_id` | bigint | Foreign key to vessels (added later) |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Relationships**:
+- Belongs to: `customers` (customer_id)
+- Belongs to: `vessels` (boat_id)
+
+**Migrations**: 
+- `/database/migrations/2021_11_30_140612_create_packages_table.php`
+- `/database/migrations/2022_10_22_152411_add_boat_id_to_packages.php`
+
+#### 6. Shipments Table
+**Purpose**: Store individual shipment items within packages
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `qty` | integer | Quantity |
+| `unit_price` | decimal(5,2) | Unit price |
+| `img_path` | varchar(255) | Image path (default: default.jpg) |
+| `category_id` | bigint | Foreign key to categories |
+| `packages_id` | bigint | Foreign key to packages |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Relationships**:
+- Belongs to: `categories` (category_id)
+- Belongs to: `packages` (packages_id)
+
+**Migration**: `/database/migrations/2021_11_31_091825_create_shipments_table.php`
+
+#### 7. Receivables Table
+**Purpose**: Track package payments
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `packID` | bigint | Foreign key to packages |
+| `paymentType` | varchar(255) | Payment method |
+| `payslip` | varchar(255) | Payment slip image (nullable) |
+| `total` | decimal | Total amount (added later) |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Relationships**:
+- Belongs to: `packages` (packID)
+
+**Migrations**:
+- `/database/migrations/2021_12_02_184443_create_receivables_table.php`
+- `/database/migrations/2022_09_08_055140_add_field_total_to_receivables_table.php`
+
+#### 8. Collections Table
+**Purpose**: Payment collection tracking
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Migration**: `/database/migrations/2021_12_02_184442_create_collections_table.php`
+
+### Location Tables
+
+#### 9. Atolls Table
+**Purpose**: Store atoll information
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `name` | varchar(255) | Atoll name |
+| `code` | varchar(255) | Atoll code |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Migration**: `/database/migrations/2022_09_05_075130_create_atolls_table.php`
+
+#### 10. Islands Table
+**Purpose**: Store island information
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `name` | varchar(255) | Island name |
+| `code` | varchar(255) | Island code |
+| `atoll_id` | bigint | Foreign key to atolls |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Relationships**:
+- Belongs to: `atolls` (atoll_id)
+
+**Migration**: `/database/migrations/2022_09_05_095032_create_islands_table.php`
+
+#### 11. Schedules Table
+**Purpose**: Store vessel schedules
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `dep_date` | date | Departure date |
+| `visiting_to` | text | Visiting locations |
+| `dock_island` | varchar(255) | Docking island |
+| `vessel_name` | varchar(255) | Vessel name |
+| `vessel_Contact` | varchar(255) | Vessel contact |
+| `arr` | varchar | Arrival information (added later) |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Migrations**:
+- `/database/migrations/2022_10_22_105556_create_schedules_table.php`
+- `/database/migrations/2022_10_27_110750_add_arr_field_to_schedules.php`
+
+### System Tables
+
+#### 12. Settings Table
+**Purpose**: Application settings
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | bigint | Primary key |
+| `created_at` | timestamp | Creation timestamp |
+| `updated_at` | timestamp | Last update timestamp |
+
+**Migration**: `/database/migrations/2022_01_19_230114_create_settings_table.php`
+
+#### 13. Password Resets Table
+**Purpose**: Password reset tokens
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `email` | varchar(255) | User email |
+| `token` | varchar(255) | Reset token |
+| `created_at` | timestamp | Creation timestamp |
+
+**Migration**: `/database/migrations/2014_10_12_100000_create_password_resets_table.php`
+
+#### 14. Personal Access Tokens Table
+**Purpose**: Laravel Sanctum API tokens
+
+**Migration**: `/database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php`
+
+#### 15. Failed Jobs Table
+**Purpose**: Failed queue jobs tracking
+
+**Migration**: `/database/migrations/2019_08_19_000000_create_failed_jobs_table.php`
+
+## Database Seeding
+
+### Default Seeder
+
+The database seeder is located at `/database/seeders/DatabaseSeeder.php`. By default, it's configured to use factory-generated test data (commented out).
+
+### Running Seeders
+
+```bash
+# Run all seeders
+php artisan db:seed
+
+# Run specific seeder
+php artisan db:seed --class=DatabaseSeeder
+
+# Refresh database and seed
+php artisan migrate:fresh --seed
+```
+
+### Creating Custom Seeders
+
+```bash
+# Generate new seeder
+php artisan make:seeder VesselsTableSeeder
+
+# Example seeder content
+```
+
+```php
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+
+class VesselsTableSeeder extends Seeder
+{
+    public function run()
+    {
+        DB::table('vessels')->insert([
+            [
+                'name' => 'MV Dhoni',
+                'island' => 'Malé',
+                'regno' => 'MV001',
+                'status' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+    }
+}
+```
+
+## Database Relationships
+
+### Entity Relationship Overview
+
+```
+Users → Vessels (boatid)
+Packages → Customers (customer_id)
+Packages → Vessels (boat_id)
+Shipments → Categories (category_id)
+Shipments → Packages (packages_id)
+Receivables → Packages (packID)
+Islands → Atolls (atoll_id)
+```
+
+## Backup and Restore
+
+### Backup Database
+
+<CodeGroup>
+
+```bash Standard MySQL
+# Backup entire database
+mysqldump -u root -p naalemvdb > backup_$(date +%Y%m%d).sql
+
+# Backup with compression
+mysqldump -u root -p naalemvdb | gzip > backup_$(date +%Y%m%d).sql.gz
+
+# Backup specific tables
+mysqldump -u root -p naalemvdb users vessels packages > backup_core_tables.sql
+```
+
+```bash Docker
+# Backup from Docker container
+docker exec naalemvdb mysqldump -u root naalemvdb > backup_$(date +%Y%m%d).sql
+
+# Backup with compression
+docker exec naalemvdb mysqldump -u root naalemvdb | gzip > backup_$(date +%Y%m%d).sql.gz
+```
+
+</CodeGroup>
+
+### Restore Database
+
+<CodeGroup>
+
+```bash Standard MySQL
+# Restore from backup
+mysql -u root -p naalemvdb < backup_20260304.sql
+
+# Restore from compressed backup
+gunzip < backup_20260304.sql.gz | mysql -u root -p naalemvdb
+```
+
+```bash Docker
+# Restore to Docker container
+docker exec -i naalemvdb mysql -u root naalemvdb < backup_20260304.sql
+
+# Restore from compressed backup
+gunzip < backup_20260304.sql.gz | docker exec -i naalemvdb mysql -u root naalemvdb
+```
+
+</CodeGroup>
+
+### Automated Backup Script
+
+```bash
+#!/bin/bash
+# save as: /home/scripts/backup-naalemv.sh
+
+BACKUP_DIR="/home/backups/naalemv"
+DATE=$(date +%Y%m%d_%H%M%S)
+FILENAME="naalemvdb_${DATE}.sql.gz"
+
+# Create backup directory if not exists
+mkdir -p $BACKUP_DIR
+
+# Create backup
+mysqldump -u root -p'your_password' naalemvdb | gzip > "${BACKUP_DIR}/${FILENAME}"
+
+# Keep only last 30 days of backups
+find $BACKUP_DIR -type f -name "*.sql.gz" -mtime +30 -delete
+
+echo "Backup completed: ${FILENAME}"
+```
+
+<Warning>
+Store backup credentials securely. Never hardcode passwords in scripts for production environments. Use MySQL configuration files or environment variables instead.
+</Warning>
+
+## Database Maintenance
+
+### Optimize Tables
+
+```bash
+# Optimize all tables
+php artisan db:table --optimize
+
+# MySQL command
+mysqlcheck -u root -p --optimize naalemvdb
+```
+
+### Check Table Integrity
+
+```bash
+# Check all tables
+mysqlcheck -u root -p --check naalemvdb
+
+# Repair tables if needed
+mysqlcheck -u root -p --repair naalemvdb
+```
+
+### Monitor Database Size
+
+```sql
+-- Check database size
+SELECT 
+    table_schema AS 'Database',
+    ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS 'Size (MB)'
+FROM information_schema.tables
+WHERE table_schema = 'naalemvdb'
+GROUP BY table_schema;
+
+-- Check individual table sizes
+SELECT 
+    table_name AS 'Table',
+    ROUND(((data_length + index_length) / 1024 / 1024), 2) AS 'Size (MB)'
+FROM information_schema.tables
+WHERE table_schema = 'naalemvdb'
+ORDER BY (data_length + index_length) DESC;
+```
+
+## Common Database Issues
+
+### Issue: Migration Failed
+
+**Symptoms**: Error during `php artisan migrate`
+
+**Solutions**:
+
+```bash
+# Check migration status
+php artisan migrate:status
+
+# Rollback last migration
+php artisan migrate:rollback
+
+# Reset and retry
+php artisan migrate:fresh
+```
+
+### Issue: Foreign Key Constraint Error
+
+**Symptoms**: Cannot delete/update record due to foreign key constraint
+
+**Solutions**:
+
+```sql
+-- Temporarily disable foreign key checks (use with caution)
+SET FOREIGN_KEY_CHECKS = 0;
+-- Perform operation
+SET FOREIGN_KEY_CHECKS = 1;
+```
+
+### Issue: Database Connection Failed
+
+**Symptoms**: SQLSTATE[HY000] [2002] Connection refused
+
+**Solutions**:
+
+1. Verify MySQL is running:
+   ```bash
+   sudo systemctl status mysql
+   # or for Docker
+   docker ps | grep naalemvdb
+   ```
+
+2. Check credentials in `.env`:
+   ```bash
+   DB_HOST=127.0.0.1
+   DB_PORT=3306  # or 3322 for Docker
+   DB_DATABASE=naalemvdb
+   DB_USERNAME=root
+   DB_PASSWORD=
+   ```
+
+3. Test connection:
+   ```bash
+   mysql -h 127.0.0.1 -P 3322 -u root -p
+   ```
+
+### Issue: Database Too Large
+
+**Symptoms**: Slow queries, disk space warnings
+
+**Solutions**:
+
+```bash
+# Clean old data
+php artisan queue:flush
+php artisan telescope:prune
+
+# Archive old records
+# Implement custom archival logic
+
+# Optimize tables
+mysqlcheck -u root -p --optimize naalemvdb
+```
+
+### Issue: Charset/Collation Errors
+
+**Symptoms**: Incorrect string value errors
+
+**Solutions**:
+
+```sql
+-- Check current charset
+SHOW CREATE DATABASE naalemvdb;
+
+-- Convert database to utf8mb4
+ALTER DATABASE naalemvdb CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Convert specific table
+ALTER TABLE users CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+## Performance Optimization
+
+### Indexing
+
+```sql
+-- Add index to frequently queried columns
+CREATE INDEX idx_packages_status ON packages(status);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_customer_number ON customers(CustNumber);
+
+-- Check existing indexes
+SHOW INDEX FROM packages;
+```
+
+### Query Optimization
+
+```bash
+# Enable query log
+php artisan db:show --counts
+
+# Monitor slow queries in mysql
+SET GLOBAL slow_query_log = 'ON';
+SET GLOBAL long_query_time = 2;
+```
+
+## Security Best Practices
+
+1. **Use Strong Passwords**
+   ```sql
+   ALTER USER 'root'@'localhost' IDENTIFIED BY 'Strong_P@ssw0rd!';
+   ```
+
+2. **Limit User Privileges**
+   ```sql
+   GRANT SELECT, INSERT, UPDATE, DELETE ON naalemvdb.* TO 'app_user'@'localhost';
+   ```
+
+3. **Regular Backups**
+   - Schedule daily automated backups
+   - Store backups in secure, off-site location
+   - Test restore procedures regularly
+
+4. **Enable SSL Connections** (Production)
+   ```bash
+   # In .env
+   DB_SSLMODE=require
+   ```
+
+5. **Monitor Access Logs**
+   ```sql
+   -- Check recent connections
+   SELECT * FROM information_schema.processlist;
+   ```
+
+## Next Steps
+
+After database setup:
+- Configure application settings in [Configuration](/system/configuration)
+- Set up user accounts and permissions
+- Implement regular backup schedules
+- Configure monitoring and alerting
+- Review and optimize database queries

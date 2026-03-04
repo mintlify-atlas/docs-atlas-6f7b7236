@@ -1,0 +1,298 @@
+---
+title: 'CategoryController'
+description: 'Manages product categories including creation, searching, and category image handling'
+---
+
+## Overview
+
+The `CategoryController` manages product categories used for shipment items. It handles category creation with image uploads, category searching, and category listing. Categories define product types with default pricing.
+
+**Location:** `app/Http/Controllers/CategoryController.php`
+
+**Related Models:**
+- [Category](/models/category)
+
+---
+
+## Methods
+
+### index()
+
+Displays a list of all product categories.
+
+**Returns:** View (`dhi.category` or `eng.category`) with all categories
+
+**Route:** `GET /category`
+
+**Authorization:** Requires authenticated and verified user
+
+**Business Logic:**
+1. Retrieves all categories from database
+2. Determines language preference from session
+3. Returns category view with all categories
+
+**Code Example:**
+```php
+public function index()
+{
+    $allCategories = category::all();
+    Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+    return view("$lang.category",['allCategories' => $allCategories]);
+}
+```
+
+---
+
+### searchcate()
+
+Searches categories by name (AJAX endpoint).
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+  
+  <ParamField path="s" type="string" required>
+    Search query string for category name
+  </ParamField>
+</ParamField>
+
+**Returns:** JSON array of matching categories
+
+**Route:** `GET /searchcate?s={query}`
+
+**Business Logic:**
+1. Searches categories where name contains query string (case-insensitive)
+2. Returns matching categories as JSON array
+
+**Code Example:**
+```php
+public function searchcate(Request $request)
+{
+    $searchCate = category::where('cate_name', 'LIKE', "%$request->s%")->get();
+    return  json_decode($searchCate, true); 
+}
+```
+
+**Example Request:**
+```http
+GET /searchcate?s=rice
+```
+
+**Example Response:**
+```json
+[
+  {
+    "id": 1,
+    "cate_name": "Rice Bags",
+    "unit_price": "25.00",
+    "img_path": "1709123456_Rice Bags.jpg",
+    "created_at": "2026-02-15T08:30:00.000000Z",
+    "updated_at": "2026-02-15T08:30:00.000000Z"
+  },
+  {
+    "id": 5,
+    "cate_name": "Basmati Rice",
+    "unit_price": "45.00",
+    "img_path": "default.png",
+    "created_at": "2026-02-20T14:20:00.000000Z",
+    "updated_at": "2026-02-20T14:20:00.000000Z"
+  }
+]
+```
+
+---
+
+### store()
+
+Creates a new product category with optional image.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object with category data
+  
+  <ParamField path="cate_name" type="string" required>
+    Category name
+  </ParamField>
+  
+  <ParamField path="unit_price" type="decimal" required>
+    Default unit price for this category
+  </ParamField>
+  
+  <ParamField path="img" type="file">
+    Optional category image file
+  </ParamField>
+</ParamField>
+
+**Validation Rules:**
+```php
+[
+    'cate_name' => ['required', 'string'],
+    'unit_price' => ['required']
+]
+```
+
+**Returns:** Redirect to `/category`
+
+**Route:** `POST /category`
+
+**Business Logic:**
+1. Validates category name (required string) and unit price (required)
+2. Handles image upload or uses default image
+3. Creates new category record
+4. Redirects to category list page
+
+**Image Handling:**
+- Default image: `default.png`
+- Uploaded images: `{timestamp}_{category_name}.{extension}`
+- Storage location: `public/img/`
+
+**Code Example:**
+```php
+public function store(Request $request)
+{
+    $this->validate($request, [
+        'cate_name' => ['required', 'string'],
+        'unit_price' => ['required'],
+    ]);
+    
+    $newPath = "default.png";
+    if(request('img')){
+        $newPath = time() . "_" . request('cate_name') . "." . request('img')->extension();   
+        request('img')->move(public_path("img"), $newPath);
+    }
+    
+    $newCategory = new category ([
+        'cate_name' => request('cate_name'),
+        'unit_price' => request('unit_price'),
+        'img_path' => $newPath
+    ]);
+    $newCategory->save();
+    return redirect('/category');
+}
+```
+
+---
+
+### show()
+
+Display the specified category (not implemented).
+
+<ParamField path="category" type="Category" required>
+  The category model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### edit()
+
+Show the form for editing a category (not implemented).
+
+<ParamField path="category" type="Category" required>
+  The category model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### update()
+
+Update the specified category (not implemented).
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+</ParamField>
+
+<ParamField path="category" type="Category" required>
+  The category model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### destroy()
+
+Remove the specified category (not implemented).
+
+<ParamField path="category" type="Category" required>
+  The category model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+## Category Image Management
+
+### Default Image
+If no image is uploaded, categories use `default.png` as their image.
+
+### Custom Images
+When uploading a category image:
+- Filename format: `{timestamp}_{category_name}.{extension}`
+- Example: `1709123456_Rice Bags.jpg`
+- Storage: `public/img/` directory
+- Allowed extensions: Determined by uploaded file
+
+---
+
+## Session Variables
+
+- `isDhivehi` - Language preference (boolean)
+
+---
+
+## Related Routes
+
+```php
+Route::resource('/category', CategoryController::class);
+Route::get('searchcate', [CategoryController::class, 'searchcate']);
+```
+
+---
+
+## Example Usage
+
+### Viewing All Categories
+
+```http
+GET /category
+```
+
+### Searching Categories
+
+```http
+GET /searchcate?s=rice
+```
+
+### Creating a Category without Image
+
+```http
+POST /category
+Content-Type: application/x-www-form-urlencoded
+
+cate_name=Rice Bags
+unit_price=25.00
+```
+
+### Creating a Category with Image
+
+```http
+POST /category
+Content-Type: multipart/form-data
+
+cate_name=Rice Bags
+unit_price=25.00
+img=[file]
+```
+
+---
+
+## Notes
+
+- Categories define default unit prices that can be overridden when creating shipment items
+- The `unit_price` field stores decimal values for pricing
+- Category search is case-insensitive and uses LIKE matching
+- Update and delete functionality is not currently implemented
+- Categories are used across both Dhivehi and English language interfaces

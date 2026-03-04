@@ -1,0 +1,391 @@
+---
+title: 'PackageController'
+description: 'Manages package finalization, payment processing, and package cancellation operations'
+---
+
+## Overview
+
+The `PackageController` handles the finalization of packages after shipment items have been added. It manages payment processing (cash and transfer), package status updates, and cancellation of packages with associated items. It also includes a Viber bot integration for customer notifications.
+
+**Location:** `app/Http/Controllers/PackageController.php`
+
+**Related Models:**
+- [Package](/models/package)
+- [Shipment](/models/shipment)
+- [Receivables](/models/receivables)
+- [Customer](/models/customer)
+- [Category](/models/category)
+
+---
+
+## Methods
+
+### index()
+
+Completes the package creation process and clears session data.
+
+**Returns:** Redirect to `/customer`
+
+**Route:** `GET /confirm`
+
+**Business Logic:**
+1. Checks if customer exists in session
+2. Clears package and customer session data
+3. Redirects to customer selection page
+
+**Code Example:**
+```php
+public function index()
+{
+    if(Session::has('NewCustomer')){
+        Session::forget('newpackage');
+        Session::forget('NewCustomer');
+    }
+    
+    return redirect('/customer');
+}
+```
+
+---
+
+### create()
+
+Show the form for creating a new package (not implemented).
+
+**Returns:** None (empty method)
+
+---
+
+### store()
+
+Processes package finalization with payment or cancels the package.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object with package and payment data
+  
+  <ParamField path="SubmitType" type="string" required>
+    Action type: "SAVE" or "CANCEL"
+  </ParamField>
+  
+  <ParamField path="packageID" type="integer" required>
+    Package ID to finalize or cancel
+  </ParamField>
+  
+  <ParamField path="payOption" type="string">
+    Payment option: "POD" (Pay on Delivery) or "NOW"
+  </ParamField>
+  
+  <ParamField path="payType" type="string">
+    Payment type: "CASH" or "TRANSFER"
+  </ParamField>
+  
+  <ParamField path="shipmentTotal" type="decimal">
+    Total amount for the shipment
+  </ParamField>
+  
+  <ParamField path="paySlip" type="file">
+    Payment slip image (required for TRANSFER payment)
+  </ParamField>
+</ParamField>
+
+**Returns:** 
+- Success: Redirect to `/confirm`
+- Error: Redirect to `/create?packid={id}` with error message
+
+**Route:** `POST /confirm`
+
+**Business Logic:**
+
+**For "SAVE" action:**
+1. Validates that package has items
+2. If payment option is "POD", skips payment processing
+3. If payment option is "NOW":
+   - For "CASH": Creates receivable record without slip
+   - For "TRANSFER": Validates slip attachment, uploads image, creates receivable
+4. Updates package status to "LOADED"
+5. Redirects to confirmation page
+
+**For "CANCEL" action:**
+1. Deletes all shipment items associated with package
+2. Deletes the package record
+3. Clears session data
+4. Redirects to create page
+
+**Image Handling (Payment Slips):**
+- Filename format: `{timestamp}_{packageID}.{extension}`
+- Storage location: `public/img/`
+
+**Code Example:**
+```php
+public function store(Request $request)
+{
+    if ($request->SubmitType == "SAVE"){
+        if(!shipment::where('packages_id', request('packageID'))->exists()) {
+            return redirect('/create')->with('status_error', 'No item added ');
+        } 
+        if($request->payOption != "POD"){
+            if($request->payType == "CASH"){
+                $Newreceivables = new receivables ([
+                    'packID' => request('packageID'),
+                    'paymentType' => Request('payType'),
+                    'payslip' => '',
+                    'total' => $request->shipmentTotal 
+                ]);
+                $Newreceivables->save();
+            }elseif($request->payType == "TRANSFER"){
+                if($request->paySlip != null){
+                    $newPath = time() . "_" . $request['packageID'] . "." . $request['paySlip']->extension();
+                    request('paySlip')->move(public_path("img"), $newPath);
+
+                    $Newreceivables = new receivables ([
+                        'packID' => request('packageID'),
+                        'paymentType' => Request('payType'),
+                        'payslip' => $newPath,
+                        'total' => $request->shipmentTotal 
+                    ]);
+                    $Newreceivables->save();
+                }else{
+                    return redirect('/create?packid='.$request->packageID)->with('status_error','Please Attach the slip');
+                }
+            }
+        }
+
+        package::where('id', $request->packageID)->update([
+            'status' => "LOADED"
+        ]);
+        return redirect('/confirm');
+    }else if($request->SubmitType == "CANCEL") {
+        if(shipment::where('packages_id', Session::get('newpackage')->id)->exists()){
+            $deleteItem = shipment::where('packages_id', Session::get('newpackage')->id);
+            $deleteItem->delete();
+        }
+        if(Package::where('id', Session::get('newpackage')->id)->exists()){
+            $deleteItem = package::find(Session::get('newpackage')->id);
+            $deleteItem->delete();
+        }
+        Session::forget('newpackage');
+        Session::forget('NewCustomer');
+        return redirect('/create');
+    }else{
+        return redirect('/create');
+    }
+}
+```
+
+---
+
+### show()
+
+Display the specified category (not implemented).
+
+<ParamField path="category" type="Category" required>
+  The category model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### edit()
+
+Show the form for editing a category (not implemented).
+
+<ParamField path="category" type="Category" required>
+  The category model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### update()
+
+Update the specified category (not implemented).
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+</ParamField>
+
+<ParamField path="category" type="Category" required>
+  The category model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### destroy()
+
+Remove the specified category (not implemented).
+
+<ParamField path="category" type="Category" required>
+  The category model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### Bot()
+
+Handles Viber bot webhook events for customer notifications.
+
+<ParamField path="_input" type="mixed" required>
+  Input parameter (currently unused)
+</ParamField>
+
+**Returns:** JSON webhook response or void
+
+**Route:** Custom webhook endpoint
+
+**Business Logic:**
+1. Receives Viber webhook events
+2. For 'webhook' event: Returns status confirmation
+3. For message events: Processes and responds to messages
+4. Includes helper function `sendmessage()` for Viber API calls
+
+**Viber Integration Details:**
+- Access Token: Hardcoded in method (should be moved to config)
+- Supported events: 'webhook', message events
+- Message types: text
+
+**Code Example:**
+```php
+public function Bot($_input)
+{
+    $access_token = "4e5f54eb7367de12-e551fff168cff2fc-7f2bd21f94dac62d";
+
+    $request = file_get_contents("php://input");
+    $input = json_decode($request, true);
+
+    if($input['event'] == 'webhook'){
+        $webhook_response['status'] = 0;
+        $webhook_response['status_message'] = "ok";
+        $webhook_response['event_type'] = "delivered";
+        echo json_encode($webhook_response);
+        die;
+    }elseif($input['event'] == 'ho'){
+        $MsgReceived = $input['message']['text'];
+        $MsgSenderID = $input['sender']['id'];
+        $MsgSenderName = $input['sender']['name'];
+        $MsgSenderNumber = $input['sender']['mnc'];
+        echo $MsgSenderID;
+        $MTR = "hello ". $MsgSenderID . " " . $MsgSenderNumber;
+
+        $data['auth_token'] = $access_token;
+        $data['receiver'] = $MsgSenderID;
+        $data['type'] = "text";
+        $data['text'] = $MTR;
+        sendmessage($data);
+    }
+
+    function sendmessage($data){
+        $url = "https://chatapi.viber.com/pa/send_message";
+        $jsonData = json_encode($data);
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonData);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content_Type : application/json'));
+        $result = curl_exec($ch);
+        return $result;
+    }
+}
+```
+
+**Note:** The Viber bot implementation appears to be incomplete with commented code and hardcoded credentials.
+
+---
+
+## Payment Processing
+
+### Payment Options
+
+1. **POD (Pay on Delivery)**
+   - No immediate payment record created
+   - Payment will be processed at delivery/collection
+
+2. **NOW (Pay Now)**
+   - Cash: Direct payment without slip
+   - Transfer: Requires payment slip upload
+
+### Payment Types
+
+- **CASH**: Direct cash payment
+- **TRANSFER**: Bank transfer with slip verification
+
+---
+
+## Error Handling
+
+The controller returns these error messages:
+
+- "No item added" - Attempting to save package without items
+- "Please Attach the slip" - Missing payment slip for transfer payment
+
+---
+
+## Session Variables
+
+- `NewCustomer` - Current customer being processed
+- `newpackage` - Current package being created
+
+---
+
+## Related Routes
+
+```php
+Route::resource('confirm', PackageController::class);
+```
+
+---
+
+## Example Usage
+
+### Saving Package with Cash Payment
+
+```http
+POST /confirm
+Content-Type: application/x-www-form-urlencoded
+
+SubmitType=SAVE
+packageID=15
+payOption=NOW
+payType=CASH
+shipmentTotal=750.00
+```
+
+### Saving Package with Transfer Payment
+
+```http
+POST /confirm
+Content-Type: multipart/form-data
+
+SubmitType=SAVE
+packageID=15
+payOption=NOW
+payType=TRANSFER
+shipmentTotal=750.00
+paySlip=[file]
+```
+
+### Saving Package with Pay on Delivery
+
+```http
+POST /confirm
+Content-Type: application/x-www-form-urlencoded
+
+SubmitType=SAVE
+packageID=15
+payOption=POD
+shipmentTotal=750.00
+```
+
+### Canceling Package
+
+```http
+POST /confirm
+Content-Type: application/x-www-form-urlencoded
+
+SubmitType=CANCEL
+packageID=15
+```

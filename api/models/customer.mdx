@@ -1,0 +1,184 @@
+---
+title: 'Customer Model'
+description: 'Customer records for the shipping system'
+---
+
+## Overview
+
+The Customer model represents customers in the NaaleMV shipping system. Each customer has a unique phone number, name, and optional Viber token for notifications. Customers can place multiple package orders and track their shipments.
+
+## Database Table
+
+**Table name:** `customers`
+
+## Schema Definition
+
+The customers table schema is defined in the migration file `2021_11_30_103227_create_customers_table.php`:
+
+### Columns
+
+<ResponseField name="id" type="bigInteger" required>
+  Auto-incrementing primary key
+</ResponseField>
+
+<ResponseField name="CustNumber" type="integer" required>
+  Customer's phone number. Used as a unique identifier. Guest customers use 0
+</ResponseField>
+
+<ResponseField name="CustName" type="string" required>
+  Customer's name
+</ResponseField>
+
+<ResponseField name="ViberToken" type="string" default="null">
+  Viber API token for sending notifications to the customer. Defaults to 'null' string
+</ResponseField>
+
+<ResponseField name="created_at" type="timestamp">
+  Timestamp when the customer record was created
+</ResponseField>
+
+<ResponseField name="updated_at" type="timestamp">
+  Timestamp when the customer record was last updated
+</ResponseField>
+
+## Model Configuration
+
+**Location:** `app/Models/customer.php`
+
+### Fillable Fields
+
+The following fields are mass-assignable:
+
+```php
+protected $fillable = [
+    'CustNumber',
+    'CustName',
+    'ViberToken',
+];
+```
+
+## Relationships
+
+<Expandable title="hasMany: Packages">
+  A customer can have multiple packages. Packages reference the customer via the `customer_id` foreign key.
+</Expandable>
+
+<Expandable title="hasOne: User Account">
+  Customers can have an associated user account for authentication. User records link to customers via the `custid` field.
+</Expandable>
+
+## Example Usage
+
+### Creating a New Customer
+
+From `CustomerController.php:133-149`:
+
+```php
+$NewCustomer = new customer([
+    'CustNumber' => request('CustNumber'),
+    'CustName' => request('CustName')
+]);
+
+if (customer::where('CustNumber', request('CustNumber'))->exists()) {
+    $Cust = customer::all('id','CustNumber');
+} else {
+    $NewCustomer->save();
+    $Cust = customer::all('id','CustNumber');
+}
+```
+
+### Updating Customer Name
+
+From `CustomerController.php:141-145`:
+
+```php
+if($_Customer[0]->CustName != request('CustName')) {
+    Customer::where('CustNumber', request('CustNumber'))->update([
+        'CustName' => request('CustName')
+    ]);
+}
+```
+
+### Finding Customer by Phone Number
+
+From `CustomerController.php:138-139`:
+
+```php
+$_Customer = customer::where('CustNumber', request('CustNumber'))->get();
+```
+
+### Retrieving Customer by ID
+
+From `CustomerController.php:39`:
+
+```php
+$NewCustomer = customer::where('id', $newpackage->customer_id)->first();
+```
+
+### Getting Customer Information API
+
+From `CustomerController.php:192-197`:
+
+```php
+public function customerInfo(Request $request)
+{
+    $CustNo = $request->custno;
+    $CustomerInfo = customer::where('CustNumber', $CustNo)->get();
+    return $CustomerInfo;
+}
+```
+
+### Creating a Guest Customer
+
+From `ShipmentController.php:125-137`:
+
+```php
+$NewCustomer = new customer([
+    'CustNumber' => 0,
+    'CustName' => "Guest"
+]);
+
+if (customer::where('CustNumber', 0)->exists()) {
+    $Cust = customer::all('id','CustNumber');
+} else {
+    $NewCustomer->save();
+    $Cust = customer::all('id','CustNumber');
+}
+```
+
+## Customer Types
+
+### Regular Customers
+
+- Have a unique `CustNumber` (phone number)
+- Can have multiple packages
+- Can optionally integrate with Viber for notifications
+- Customer names can be updated if they change
+
+### Guest Customers
+
+- Use `CustNumber` = 0
+- Use `CustName` = "Guest"
+- Allow for anonymous package creation
+- Share the same customer record (singleton pattern)
+
+## Validation
+
+From `CustomerController.php:124-129`:
+
+```php
+$this->validate($request, [
+    'CustNumber' => ['required'],
+    'CustAddress' => ['required'],
+    'LFrom' => ['required'],
+    'ULTo' => ['required']
+]);
+```
+
+## Notes
+
+- `CustNumber` is used as the primary identifier for customer lookup, not the database ID
+- The system checks if a customer exists before creating a new record to prevent duplicates
+- Customer names can be updated if the same phone number is used with a different name
+- The `ViberToken` field stores the Viber API token for push notifications
+- Guest customers (CustNumber = 0) are used for walk-in or anonymous shipments

@@ -1,0 +1,515 @@
+---
+title: 'CustomerController'
+description: 'Manages customer information, customer dashboard views, and customer-related operations'
+---
+
+## Overview
+
+The `CustomerController` handles customer management including customer creation, information retrieval, and customer portal views. It provides dashboard functionality for customers to track their shipments, view schedules, settlements, and manage their account.
+
+**Location:** `app/Http/Controllers/CustomerController.php`
+
+**Related Models:**
+- [Customer](/models/customer)
+- [Package](/models/package)
+- [Shipment](/models/shipment)
+- [Islands](/models/islands)
+- [Schedule](/models/schedule)
+- [Receivables](/models/receivables)
+
+---
+
+## Methods
+
+### index()
+
+Displays the customer selection interface or redirects to creation form if customer exists in session.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+  
+  <ParamField path="island" type="integer">
+    Optional island ID to filter customers
+  </ParamField>
+</ParamField>
+
+**Returns:** View (`dhi.create` or `eng.create`) with categories and islands, or redirect to `/create`
+
+**Route:** `GET /customer`
+
+**Business Logic:**
+1. Checks language preference from session
+2. If customer exists in session, redirects to `/create`
+3. Retrieves islands (filtered by ID if provided)
+4. Checks if latest package is in "LOADING" status
+5. If loading package exists, sets session and redirects to create
+6. Returns customer selection view
+
+**Code Example:**
+```php
+public function index(Request $request)
+{
+    Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+    if(session::has('NewCustomer')){
+        return redirect('/create');
+    }
+
+    $selectedIsland = islands::orderBy('name')->get();
+    if($request->exists('island')){
+        $selectedIsland = islands::where( 'id',$request->island)->get();
+    }
+    $allCategories = category::all();
+    $newpackage = package::all()->last();
+    if($newpackage != null){
+        if($newpackage->status =="LOADING"){
+            $NewCustomer = customer::where('id',$newpackage->customer_id)->first();
+            Session::put('NewCustomer',$NewCustomer);
+            Session::put('newpackage',$newpackage);
+            return redirect('/create');
+        }
+    }
+    return view("$lang.create",['allCategories' => $allCategories,'selectedIsland'=>$selectedIsland]);
+}
+```
+
+---
+
+### dashboard()
+
+Displays the customer portal dashboard with shipment tracking information.
+
+**Returns:** View (`customer.dashboard`) with transaction summary and latest package details
+
+**Route:** `GET /customer/dashboard`
+
+**Authorization:** Requires authenticated customer user
+
+**Business Logic:**
+1. Retrieves latest package for logged-in customer
+2. Calculates transaction statistics (total, collected, shipped)
+3. If package is not collected, retrieves departure schedule
+4. Determines if vessel has departed
+5. Returns dashboard view with all tracking information
+
+**Response Data:**
+- `transaction` - All customer packages with statistics:
+  - `TotalShipments` - Total number of shipments
+  - `Collected` - Number of collected packages
+  - `Shipped` - Number of shipped packages
+- `LastPack` - Latest package with vessel information
+- `DepatrueTime` - Schedule with departure status (if applicable)
+  - `isDepatured` - Boolean indicating if vessel has departed
+
+**Code Example:**
+```php
+public function dashboard()
+{
+    $datetime = date('Y-m-d H:i:s');
+    $LastPack = package::with('VesselName')->where([['customer_id',auth()->user()->custid]])->orderByDesc('id')->First();
+    $transaction = package::where('customer_id',auth()->user()->custid)->orderByDesc('id')->get();
+    $TransColl = package::where([['customer_id',auth()->user()->custid],['status','COLLECTED']])->orderByDesc('id')->get();
+    $TransShipped = package::where([['customer_id',auth()->user()->custid],['status','!=','COLLECTED']])->orderByDesc('id')->get();
+    $transaction->TotalShipments = count($transaction);
+    $transaction->Collected = count($TransColl);
+    $transaction->Shipped = count($TransShipped);
+    if($LastPack){    
+        if($LastPack->status !='COLLECTED'){    
+            $DepatrueTime = schedule::where([['id',$LastPack->vessel_id],['status','!=','COMPLETE']])->orderByDesc('id')->first();
+            $DepatrueTime->isDepatured = false;
+            if($DepatrueTime->dep_date <= $datetime){
+                $DepatrueTime->isDepatured = true;
+            }
+            return view('customer.dashboard',['transaction'=>$transaction,'LastPack'=>$LastPack, 'DepatrueTime'=>$DepatrueTime]);
+        }
+    }
+    return view('customer.dashboard',['transaction'=>$transaction,'LastPack'=>$LastPack]);
+}
+```
+
+---
+
+### schedule()
+
+Displays vessel schedules for customers.
+
+**Returns:** View (`customer.schedule`) with all schedules
+
+**Route:** `GET /customer/schedule`
+
+**Authorization:** Requires authenticated and verified user
+
+**Code Example:**
+```php
+public function schedule()
+{
+    $schedules = schedule::orderByDesc('id')->get();
+    return view('customer.schedule',['schedules'=>$schedules]);
+}
+```
+
+---
+
+### transaction()
+
+Displays customer's transaction history.
+
+**Returns:** View (`customer.transaction`) with all customer packages
+
+**Route:** `GET /customer/transaction`
+
+**Authorization:** Requires authenticated and verified user
+
+**Code Example:**
+```php
+public function transaction()
+{
+    $transaction = package::where('customer_id',auth()->user()->custid)->orderByDesc('id')->get();
+    return view('customer.transaction',['transaction'=>$transaction]);
+}
+```
+
+---
+
+### settlement()
+
+Displays customer's payment settlement information.
+
+**Returns:** View (`customer.settlement`) with transaction totals and payment status
+
+**Route:** `GET /customer/settlement`
+
+**Authorization:** Requires authenticated and verified user
+
+**Business Logic:**
+1. Retrieves all customer packages
+2. Retrieves all shipment items
+3. Retrieves all receivables (payments)
+4. For each transaction:
+   - Checks payment status (PAID or CREDIT)
+   - Calculates total amount from shipment items
+5. Returns settlement view with enriched data
+
+**Response Data:**
+- Each transaction includes:
+  - `paymentStatus` - "PAID" or "CREDIT"
+  - `total` - Calculated total amount
+
+**Code Example:**
+```php
+public function settlement()
+{
+    $transaction = package::where('customer_id',auth()->user()->custid)->orderByDesc('id')->get();
+    $items = shipment::orderByDesc('packages_id')->get();
+    $receivables = receivables::orderByDesc('packID')->get();
+    foreach($transaction as $trans){
+        $total = 0;
+        foreach($receivables as $receiv ){
+            if($trans->id == $receiv->packID){
+                $trans->paymentStatus = "PAID";
+                break;
+            }
+            $trans->paymentStatus = "CREDIT";
+        }
+        foreach($items as $item ){
+            if($trans->id == $item->packages_id){
+                $total+= $item->qty * $item->unit_price;
+            }
+        }
+        $trans->total = $total; 
+    }
+    return view('customer.settlement',['transaction'=>$transaction]);
+}
+```
+
+---
+
+### setting()
+
+Displays customer account settings page.
+
+**Returns:** View (`customer.setting`)
+
+**Route:** `GET /customer/setting`
+
+**Authorization:** Requires authenticated and verified user
+
+**Code Example:**
+```php
+public function setting()
+{
+    return view('customer.setting');
+}
+```
+
+---
+
+### logout()
+
+Displays logout confirmation page.
+
+**Returns:** View (`customer.logout`)
+
+**Route:** `GET /customer/logout`
+
+**Authorization:** Requires authenticated user
+
+**Code Example:**
+```php
+public function logout()
+{
+    return view('customer.logout');
+}
+```
+
+---
+
+### store()
+
+Creates or updates a customer and associated package.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object with customer and package data
+  
+  <ParamField path="CustNumber" type="string" required>
+    Customer number/identifier
+  </ParamField>
+  
+  <ParamField path="CustName" type="string">
+    Customer name
+  </ParamField>
+  
+  <ParamField path="CustAddress" type="string" required>
+    Customer/delivery address
+  </ParamField>
+  
+  <ParamField path="LFrom" type="string" required>
+    Origin location
+  </ParamField>
+  
+  <ParamField path="ULTo" type="string" required>
+    Destination location
+  </ParamField>
+</ParamField>
+
+**Validation Rules:**
+```php
+[
+    'CustNumber' => ['required'],
+    'CustAddress' => ['required'],
+    'LFrom' => ['required'],
+    'ULTo' => ['required']
+]
+```
+
+**Returns:** Redirect to `/create`
+
+**Route:** `POST /customer`
+
+**Business Logic:**
+1. Validates customer and package data
+2. Creates new customer or retrieves existing by CustNumber
+3. Updates customer name if changed
+4. If package exists in session, updates it with new data
+5. If no package in session, creates new package
+6. Associates package with authenticated user's boat
+7. Stores customer and package in session
+8. Redirects to create page
+
+**Code Example:**
+```php
+public function store(Request $request)
+{
+    $this->validate($request, [
+        'CustNumber' => ['required'],
+        'CustAddress' => ['required'],
+        'LFrom' => ['required'],
+        'ULTo' => ['required']
+    ]);
+    
+    $NewCustomer = new customer([
+        'CustNumber' => request('CustNumber'),
+        'CustName' => request('CustName')
+    ]);
+    
+    if (customer::where('CustNumber', request('CustNumber'))->exists()){
+        $_Customer = customer::where('CustNumber', request('CustNumber'))->get();
+        if($_Customer[0]->CustName != request('CustName')){
+            Customer::where('CustNumber', request('CustNumber'))->update([
+                'CustName' => request('CustName')
+            ]);
+        }
+        $Cust = customer::all('id','CustNumber');
+    }
+    else{
+        $NewCustomer -> save();
+        $Cust = customer::all('id','CustNumber');
+    }
+
+    foreach( $Cust as $_Cust){
+        if($_Cust['CustNumber'] == request('CustNumber')){
+            $CustID = $_Cust['id'];
+            break;
+        }
+    }
+    
+    if(Session::has('newpackage')){
+        package::where('id', Session::get('newpackage')->id)->update([
+            'CustAddress' => request('CustAddress'),
+            'from' => Request('LFrom'),
+            'to' => Request('ULTo'),
+            'customer_id' => $CustID,
+            'vessel_id' => auth()->user()->boatid,
+        ]);
+        $newpackage = package::where('id', Session::get('newpackage')->id)->get();
+        Session::forget('newpackage');
+        Session::put('newpackage',$newpackage[0]);
+    }else{
+        $newpackage = new package ([
+            'CustAddress' => request('CustAddress'),
+            'from' => Request('LFrom'),
+            'to' => Request('ULTo'),
+            'customer_id' => $CustID,
+            'vessel_id' => auth()->user()->boatid,
+        ]);
+        $newpackage->save();
+        Session::put('newpackage',$newpackage);
+    }
+    Session::put('NewCustomer',$NewCustomer);
+    return redirect('/create');
+}
+```
+
+---
+
+### customerInfo()
+
+Retrieves customer information by customer number (API endpoint).
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+  
+  <ParamField path="custno" type="string" required>
+    Customer number to look up
+  </ParamField>
+</ParamField>
+
+**Returns:** JSON array of customer information
+
+**Route:** `GET /customerinfo?custno={number}`
+
+**Code Example:**
+```php
+public function customerInfo(Request $request)
+{
+    $CustNo = $request->custno;
+    $CustomerInfo = customer::where('CustNumber', $CustNo)->get();
+    return $CustomerInfo;
+}
+```
+
+**Example Response:**
+```json
+[
+  {
+    "id": 5,
+    "CustNumber": "12345",
+    "CustName": "Ahmed Ali",
+    "created_at": "2026-01-15T10:30:00.000000Z",
+    "updated_at": "2026-01-15T10:30:00.000000Z"
+  }
+]
+```
+
+---
+
+### edit()
+
+Show the form for editing a customer (not implemented).
+
+<ParamField path="customer" type="Customer" required>
+  The customer model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### update()
+
+Update the specified customer (not implemented).
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+</ParamField>
+
+<ParamField path="customer" type="Customer" required>
+  The customer model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### destroy()
+
+Remove the specified customer (not implemented).
+
+<ParamField path="customer" type="Customer" required>
+  The customer model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+## Session Variables
+
+The controller uses the following session variables:
+
+- `isDhivehi` - Language preference (boolean)
+- `NewCustomer` - Current customer being processed
+- `newpackage` - Current package being created
+
+---
+
+## Related Routes
+
+```php
+Route::resource('customer', CustomerController::class);
+Route::get('customer/dashboard', [CustomerController::class, 'dashboard']);
+Route::get('customer/schedule', [CustomerController::class, 'schedule']);
+Route::get('customer/transaction', [CustomerController::class, 'transaction']);
+Route::get('customer/settlement', [CustomerController::class, 'settlement']);
+Route::get('customer/setting', [CustomerController::class, 'setting']);
+Route::get('customer/logout', [CustomerController::class, 'logout']);
+Route::get('customerinfo', [CustomerController::class, 'customerInfo']);
+```
+
+---
+
+## Example Usage
+
+### Creating a Customer and Package
+
+```http
+POST /customer
+Content-Type: application/x-www-form-urlencoded
+
+CustNumber=12345
+CustName=Ahmed Ali
+CustAddress=Majeedhee Magu, Male
+LFrom=Male
+ULTo=Kulhudhuffushi
+```
+
+### Retrieving Customer Information
+
+```http
+GET /customerinfo?custno=12345
+```
+
+### Accessing Customer Dashboard
+
+```http
+GET /customer/dashboard
+```

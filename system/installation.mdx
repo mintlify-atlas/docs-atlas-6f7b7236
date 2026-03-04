@@ -1,0 +1,298 @@
+---
+title: Installation
+description: Step-by-step guide to install and set up NaaleMV
+---
+
+## System Requirements
+
+Before installing NaaleMV, ensure your system meets the following requirements:
+
+- **PHP**: 7.3 or higher (8.0+ supported)
+- **MySQL**: 5.7+ or MariaDB equivalent
+- **Composer**: Latest version
+- **Node.js**: 12.x or higher
+- **NPM**: 6.x or higher
+- **Web Server**: Apache 2.4+ or Nginx 1.18+
+
+<Warning>
+Ensure PHP has the following extensions enabled: `mbstring`, `openssl`, `pdo`, `pdo_mysql`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`
+</Warning>
+
+## Installation Methods
+
+<CodeGroup>
+
+```bash Standard Installation
+# Clone the repository
+git clone <repository-url> naalemv
+cd naalemv
+
+# Install PHP dependencies
+composer install
+
+# Install JavaScript dependencies
+npm install
+
+# Copy environment file
+cp .env.example .env
+
+# Generate application key
+php artisan key:generate
+
+# Set up the database (see Database Setup section)
+php artisan migrate
+
+# Build frontend assets
+npm run production
+```
+
+```bash Docker Installation
+# Clone the repository
+git clone <repository-url> naalemv
+cd naalemv
+
+# Start Docker containers
+docker-compose up -d
+
+# Access the container
+docker exec -it naalemv bash
+
+# Inside container: Install dependencies
+composer install
+npm install
+
+# Copy and configure environment
+cp .env.example .env
+php artisan key:generate
+
+# Run migrations
+php artisan migrate
+
+# Build assets
+npm run production
+```
+
+</CodeGroup>
+
+## Docker Setup Details
+
+NaaleMV includes a Docker configuration with the following services:
+
+### Application Container (`naalemv`)
+- **Image**: chipaau/php:8.1
+- **Virtual Host**: customer.naalemv
+- **Working Directory**: /var/www/app
+- **Port**: Proxied through nginx-proxy network
+
+### Database Container (`naalemvdb`)
+- **Image**: MySQL 5.7.16
+- **Port**: 3322 (host) → 3306 (container)
+- **Database**: naalemvdb
+- **Data Volume**: ./data:/var/lib/mysql
+
+<Warning>
+The Docker setup uses MySQL with empty root password for development. Always set a strong password in production environments.
+</Warning>
+
+### Docker Compose Configuration
+
+The `docker-compose.yml` file is pre-configured with:
+- Automatic container restart
+- Volume mounting for persistent data
+- Network integration with nginx-proxy
+- Custom Apache configuration support
+
+## Web Server Configuration
+
+### Apache Configuration
+
+```apache
+<VirtualHost *:80>
+    ServerName naalemv.local
+    DocumentRoot /var/www/app/public
+
+    <Directory /var/www/app/public>
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/naalemv-error.log
+    CustomLog ${APACHE_LOG_DIR}/naalemv-access.log combined
+</VirtualHost>
+```
+
+<Warning>
+Ensure `mod_rewrite` is enabled: `sudo a2enmod rewrite`
+</Warning>
+
+### Nginx Configuration
+
+```nginx
+server {
+    listen 80;
+    server_name naalemv.local;
+    root /var/www/app/public;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+    index index.php;
+
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.0-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+```
+
+## File Permissions
+
+Set proper file permissions for Laravel:
+
+```bash
+# Set ownership
+sudo chown -R www-data:www-data /var/www/app
+
+# Set directory permissions
+sudo find /var/www/app -type d -exec chmod 755 {} \;
+
+# Set file permissions
+sudo find /var/www/app -type f -exec chmod 644 {} \;
+
+# Set storage and cache permissions
+sudo chmod -R 775 storage bootstrap/cache
+```
+
+## Verification Steps
+
+After installation, verify the setup:
+
+### 1. Check PHP Version
+```bash
+php -v
+# Should show PHP 7.3 or higher
+```
+
+### 2. Verify Dependencies
+```bash
+composer check-platform-reqs
+```
+
+### 3. Test Database Connection
+```bash
+php artisan tinker
+>>> DB::connection()->getPdo();
+# Should return PDO object without errors
+```
+
+### 4. Check Application Key
+```bash
+php artisan key:generate --show
+# Should display a base64 encoded key
+```
+
+### 5. Access Application
+Navigate to your configured URL (e.g., `http://localhost` or `http://naalemv.local`)
+
+<Warning>
+If you see a "500 Server Error", check the Laravel log files in `storage/logs/laravel.log`
+</Warning>
+
+## Development Server
+
+For quick testing, use Laravel's built-in development server:
+
+```bash
+php artisan serve
+# Application will be available at http://localhost:8000
+```
+
+## Asset Compilation
+
+### Development Mode (with watch)
+```bash
+npm run watch
+```
+
+### Production Build
+```bash
+npm run production
+```
+
+### Hot Module Replacement (HMR)
+```bash
+npm run hot
+```
+
+## Post-Installation Tasks
+
+1. **Configure Environment Variables** - See [Configuration](/system/configuration)
+2. **Set Up Database** - See [Database Setup](/system/database-setup)
+3. **Configure Mail Settings** - Update SMTP credentials in `.env`
+4. **Set Application URL** - Update `APP_URL` to match your domain
+5. **Enable Maintenance Mode** (Production) - Use `php artisan down` during updates
+
+## Troubleshooting
+
+### Composer Install Fails
+```bash
+# Clear composer cache
+composer clear-cache
+
+# Update composer itself
+composer self-update
+
+# Try installation again
+composer install --no-cache
+```
+
+### NPM Install Fails
+```bash
+# Clear npm cache
+npm cache clean --force
+
+# Remove node_modules and package-lock
+rm -rf node_modules package-lock.json
+
+# Reinstall
+npm install
+```
+
+### Permission Denied Errors
+```bash
+# Reset storage permissions
+sudo chmod -R 775 storage bootstrap/cache
+sudo chown -R www-data:www-data storage bootstrap/cache
+```
+
+### Key Generate Error
+```bash
+# Ensure .env file exists
+cp .env.example .env
+
+# Generate key
+php artisan key:generate
+```
+
+## Next Steps
+
+After successful installation:
+- Configure your environment variables in [Configuration](/system/configuration)
+- Set up the database schema in [Database Setup](/system/database-setup)
+- Review security best practices for production deployment

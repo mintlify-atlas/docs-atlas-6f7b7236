@@ -1,0 +1,456 @@
+---
+title: 'ShipmentController'
+description: 'Manages shipment items, including creation, modification, and deletion of individual items within packages'
+---
+
+## Overview
+
+The `ShipmentController` handles all operations related to individual shipment items that belong to packages. It manages the creation of shipment items, image uploads for items, island/atoll management for the dashboard, and item modifications.
+
+**Location:** `app/Http/Controllers/ShipmentController.php`
+
+**Related Models:**
+- [Shipment](/models/shipment)
+- [Package](/models/package)
+- [Category](/models/category)
+- [Customer](/models/customer)
+- [Islands](/models/islands)
+- [Atoll](/models/atoll)
+
+---
+
+## Methods
+
+### index()
+
+Displays the shipment creation form with existing items if a package is in progress.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+  
+  <ParamField path="cateid" type="integer">
+    Category ID passed via query parameter
+  </ParamField>
+</ParamField>
+
+**Returns:** View (`dhi.create` or `eng.create`) with categories and shipments
+
+**Route:** `GET /create`
+
+**Business Logic:**
+1. Determines language (Dhivehi or English) from session
+2. Stores category ID in session
+3. Checks if customer exists in session
+4. If package exists in session, retrieves all shipments and calculates total
+5. Redirects to `/customer` if no customer in session
+
+**Code Example:**
+```php
+public function index(Request $request)
+{
+    Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+    Session::put('NewCategory',$request->cateid);
+    if(session::has('NewCustomer')){
+        $allCategories = category::all();
+        if(Session::has('newpackage')){
+            if (shipment::where('packages_id', Session::get('newpackage')->id)->exists()){
+                $Total = 0;
+                $Shipments = shipment::where('packages_id', Session::get('newpackage')->id)->get();
+                foreach($Shipments as $item){
+                    $Total += $item->unit_price * $item->qty;
+                }
+                return view("$lang.create",['allCategories' => $allCategories, 'Shipments'=>$Shipments, 'Total'=>$Total]);
+            }
+        }
+        return view("$lang.create",['allCategories' => $allCategories]);
+    }
+    return redirect('/customer');
+}
+```
+
+---
+
+### island()
+
+Displays the dashboard with all islands for vessel operators.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+</ParamField>
+
+**Returns:** View (`dhi.dashboard` or `eng.dashboard`) with islands list, or redirect for customers
+
+**Route:** `GET /dashboard`
+
+**Authorization:** Redirects customers to `/customer/dashboard`
+
+**Code Example:**
+```php
+function island(Request $request){    
+    if(auth()->user()->rank == "customer" ){
+        return redirect('/customer/dashboard');
+    }
+    $allIslands = islands::orderBy('name','asc')->get();
+    Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+    return view("$lang.dashboard",['allIslands' => $allIslands]);
+}
+```
+
+---
+
+### createIsland()
+
+Creates a new island and associated atoll if it doesn't exist.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object with island data
+  
+  <ParamField path="atoll" type="string" required>
+    Name of the atoll
+  </ParamField>
+  
+  <ParamField path="name" type="string" required>
+    Name of the island
+  </ParamField>
+  
+  <ParamField path="code" type="string" required>
+    Island code
+  </ParamField>
+</ParamField>
+
+**Validation Rules:**
+```php
+[
+    'atoll' => ['required'],
+    'name' => ['required'],
+    'code' => ['required']
+]
+```
+
+**Returns:** Redirect to `/dashboard` with new island data
+
+**Route:** `POST /dashboard/island`
+
+**Business Logic:**
+1. Validates required fields
+2. Creates atoll if it doesn't exist (with uppercase name)
+3. Retrieves or uses newly created atoll
+4. Creates new island associated with the atoll
+5. Redirects to dashboard
+
+**Code Example:**
+```php
+function createIsland(Request $request){
+    $this->validate($request, [
+        'atoll' => ['required'],
+        'name' => ['required'],
+        'code' => ['required'],
+    ]);
+    if(!atoll::where('name',strtoupper($request->atoll))->exists()){
+        $atoll = new atoll([
+            'name'=>strtoupper($request->atoll),
+            'code'=>'-',
+        ]);
+        $atoll->save();
+    }
+    
+    $atoll = atoll::where('name',$request->atoll)->first();
+    $newIslands = new islands ([
+        'atoll_id' => $atoll->id,
+        'name' => $request->name,
+        'code' => $request->code,
+    ]);
+    $newIslands->save();
+    return redirect('dashboard')->with(['newIslands'=>$newIslands]);
+}
+```
+
+---
+
+### create()
+
+Shows the form for creating new shipment items.
+
+**Returns:** View (`dhi.create` or `eng.create`) with all categories
+
+**Route:** `GET /create/create`
+
+**Code Example:**
+```php
+public function create()
+{
+    Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+    $allCategories = category::all();
+    return view("$lang.create",['allCategories' => $allCategories]);
+}
+```
+
+---
+
+### store()
+
+Stores a new shipment item to the database, handling both regular and guest customers.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object with shipment data
+  
+  <ParamField path="submit" type="string" required>
+    Submit button value: "AddItem" or "AddItem_Guest"
+  </ParamField>
+  
+  <ParamField path="qty" type="integer" required>
+    Quantity of items
+  </ParamField>
+  
+  <ParamField path="unit_price" type="decimal" required>
+    Unit price per item
+  </ParamField>
+  
+  <ParamField path="cateID" type="integer" required>
+    Category ID
+  </ParamField>
+  
+  <ParamField path="packID" type="integer">
+    Package ID (required for "AddItem")
+  </ParamField>
+  
+  <ParamField path="img" type="file">
+    Optional image file for the item
+  </ParamField>
+</ParamField>
+
+**Validation Rules (AddItem):**
+```php
+[
+    'qty' => ['required'],
+    'unit_price' => ['required'],
+    'cateID' => ['required'],
+    'packID' => ['required']
+]
+```
+
+**Validation Rules (AddItem_Guest):**
+```php
+[
+    'qty' => ['required'],
+    'unit_price' => ['required'],
+    'cateID' => ['required']
+]
+```
+
+**Returns:** Redirect to `/create`
+
+**Route:** `POST /create`
+
+**Business Logic:**
+
+**For "AddItem":**
+1. Validates shipment data including package ID
+2. Handles image upload (or uses default)
+3. Creates new shipment record
+4. Redirects to create page
+
+**For "AddItem_Guest":**
+1. Creates or retrieves guest customer (CustNumber = 0)
+2. Creates new package for guest
+3. Stores package in session
+4. Validates shipment data
+5. Handles image upload
+6. Creates shipment record linked to guest package
+
+**Image Handling:**
+- Default image: `load_default.png`
+- Uploaded images: `{timestamp}_pack_id_{packID}.{extension}`
+- Storage location: `public/item_img/`
+
+**Code Example:**
+```php
+public function store(Request $request)
+{
+    if($request->submit == "AddItem" || session::has('NewCustomer') ){
+        $this->validate($request, [
+            'qty' => ['required'],
+            'unit_price' => ['required'],
+            'cateID' => ['required'],
+            'packID' => ['required']
+        ]);
+        $newPath = "load_default.png";
+        if(Request('img')!=null){
+            $newPath = time() . "_pack_id_" . Request('packID') . "." . request('img')->extension();
+            request('img')->move(public_path("item_img"), $newPath);
+        }
+        
+        $newShipment = new shipment ([
+            'qty' => Request('qty'),
+            'unit_price' => Request('unit_price'),
+            'img_path' => $newPath,
+            'category_id' => Request('cateID'),
+            'packages_id' => Request('packID')
+        ]);
+        $newShipment->save();
+    }
+    return redirect('/create');
+}
+```
+
+---
+
+### show()
+
+Display the specified shipment (not implemented).
+
+<ParamField path="shipment" type="Shipment" required>
+  The shipment model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### edit()
+
+Show the form for editing a shipment (debug method).
+
+<ParamField path="shipment" type="Shipment" required>
+  The shipment model instance
+</ParamField>
+
+**Returns:** Debug dump with "asghdb"
+
+**Note:** This appears to be a debug/placeholder method.
+
+---
+
+### update()
+
+Update the specified shipment (not implemented).
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+</ParamField>
+
+<ParamField path="shipment" type="Shipment" required>
+  The shipment model instance
+</ParamField>
+
+**Returns:** None (empty method)
+
+---
+
+### destroy()
+
+Removes a shipment item or updates its quantity and price.
+
+<ParamField path="request" type="Request" required>
+  The HTTP request object
+  
+  <ParamField path="submit" type="string" required>
+    Action type: "delete" or "AddItem"
+  </ParamField>
+  
+  <ParamField path="cateID" type="integer" required>
+    Shipment ID to delete or update
+  </ParamField>
+  
+  <ParamField path="qty" type="integer">
+    New quantity (for update)
+  </ParamField>
+  
+  <ParamField path="unit_price" type="decimal">
+    New unit price (for update)
+  </ParamField>
+</ParamField>
+
+**Returns:** Redirect to `/create`
+
+**Route:** `DELETE /create/{id}`
+
+**Business Logic:**
+
+**For "delete":**
+1. Finds shipment by ID
+2. Deletes associated image file
+3. Deletes shipment record
+4. Redirects to create page
+
+**For "AddItem":**
+1. Updates shipment quantity and unit price
+2. Redirects to create page
+
+**Code Example:**
+```php
+public function destroy(Request $request)
+{
+    if($request->submit == "delete"){
+        $deleteItem = shipment::find($request->cateID);
+        $fileName = 'item_img/'. $deleteItem->img_path;
+        File::delete($fileName);
+        $deleteItem->delete();
+        return redirect('/create');
+    }elseif($request->submit == "AddItem"){
+        shipment::where('id', $request->cateID)->update([
+            'qty' => Request('qty'),
+            'unit_price' => Request('unit_price')
+        ]);
+        return redirect('/create');
+    }
+}
+```
+
+---
+
+## Session Variables
+
+The controller uses the following session variables:
+
+- `isDhivehi` - Language preference (boolean)
+- `NewCategory` - Currently selected category ID
+- `NewCustomer` - Current customer being processed
+- `newpackage` - Current package being created
+
+---
+
+## Related Routes
+
+```php
+Route::resource('create', ShipmentController::class);
+Route::get('/dashboard', [ShipmentController::class, 'island']);
+Route::post('/dashboard/island', [ShipmentController::class, 'createIsland']);
+```
+
+---
+
+## Example Usage
+
+### Creating a Shipment Item
+
+```http
+POST /create
+Content-Type: multipart/form-data
+
+submit=AddItem
+qty=5
+unit_price=150.00
+cateID=3
+packID=12
+img=[file]
+```
+
+### Deleting a Shipment Item
+
+```http
+DELETE /create/5
+
+submit=delete
+cateID=5
+```
+
+### Creating an Island
+
+```http
+POST /dashboard/island
+
+atoll=HDH
+name=Kulhudhuffushi
+code=KDH
+```

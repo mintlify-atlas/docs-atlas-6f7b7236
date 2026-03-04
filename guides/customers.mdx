@@ -1,0 +1,396 @@
+---
+title: 'Customer Guide'
+description: 'Guide for customers to track packages, view vessel schedules, and manage their shipments in NaaleMV'
+---
+
+# Customer Guide
+
+This guide helps customers navigate the NaaleMV system to track their packages, view vessel schedules, review transactions, and manage their account settings.
+
+## Getting Started
+
+### Registration and Login
+
+Customers are typically created by vessel operators during the shipment creation process. Your account is associated with a unique **Customer Number** (`CustNumber`).
+
+**Login Route:** `GET /login`
+
+After authentication, you'll be redirected to your customer dashboard.
+
+<Info>
+  Customer accounts require email verification before accessing most features. Ensure you verify your email address after registration.
+</Info>
+
+### First Time Setup
+
+Upon first login:
+1. Verify your email address (check your inbox for verification link)
+2. Review your customer profile information
+3. Update your password in settings if needed
+
+## Customer Dashboard
+
+The dashboard provides an overview of your shipment activity and latest package status.
+
+**Route:** `GET /customer/dashboard`
+
+**Controller:** `CustomerController@dashboard` (source: `app/Http/Controllers/CustomerController.php:51`)
+
+**View:** `resources/views/customer/dashboard.blade.php`
+
+### Dashboard Features
+
+#### Shipment Statistics
+
+The left panel displays:
+- **Total Shipments** - All packages you've created
+- **Shipped** - Packages currently in transit or loaded (not collected)
+- **Total Collected** - Packages successfully delivered
+
+**Source:** `CustomerController@dashboard` (source: `app/Http/Controllers/CustomerController.php:55-60`)
+
+#### Package History
+
+The right panel shows your most recent package with a visual timeline:
+
+<Steps>
+  <Step title="Created Shipment">
+    When the package was first created by the vessel operator.
+  </Step>
+
+  <Step title="Loaded to Vessel">
+    Package loaded onto the vessel (e.g., "Loaded to Dhoni Boat").
+  </Step>
+
+  <Step title="Boat Departure">
+    Vessel departed from origin to destination. This step shows:
+    - Departure date from vessel schedule
+    - Route information (from → to)
+    - Active status if departure date has passed
+  </Step>
+
+  <Step title="Docked">
+    Vessel arrived at destination island.
+  </Step>
+
+  <Step title="Package Collected">
+    Package delivered and collected by recipient.
+  </Step>
+</Steps>
+
+**View:** `resources/views/customer/dashboard.blade.php:46-113`
+
+<Note>
+  If you have no shipments, the dashboard will display "No order found".
+</Note>
+
+## Viewing Package Status
+
+Track all your packages and their current status from the transactions page.
+
+**Route:** `GET /customer/transaction`
+
+**Controller:** `CustomerController@transaction` (source: `app/Http/Controllers/CustomerController.php:78`)
+
+**View:** `resources/views/customer/transaction.blade.php`
+
+### Package Information
+
+Each transaction displays:
+- **Package ID** - Unique identifier for the package
+- **Status** - Current status (LOADING, LOADED, COLLECTED)
+- **From/To** - Origin and destination islands
+- **Customer Address** - Delivery address
+- **Created Date** - When the package was created
+- **Vessel** - The vessel handling your shipment
+
+Packages are listed in descending order (most recent first).
+
+**Source:** `CustomerController@transaction` (source: `app/Http/Controllers/CustomerController.php:80`)
+
+### Understanding Package Status
+
+| Status | Meaning |
+|--------|----------|
+| **LOADING** | Package is being prepared, items are being added |
+| **LOADED** | Package is finalized and loaded on the vessel |
+| **COLLECTED** | Package has been delivered and collected |
+
+## Checking Vessel Schedules
+
+Stay informed about vessel departure times and routes.
+
+**Route:** `GET /customer/schedule`
+
+**Controller:** `CustomerController@schedule` (source: `app/Http/Controllers/CustomerController.php:73`)
+
+**View:** `resources/views/customer/schedule.blade.php`
+
+### Schedule Information
+
+Each schedule entry shows:
+- **Vessel Name** - Name of the boat
+- **Vessel Contact** - Contact number for the vessel operator
+- **Departure Date** - When the vessel departs
+- **Dock Island** - Final destination island
+- **Visiting To** - Islands the vessel will visit en route
+- **Status** - Current status (active or COMPLETE)
+
+Schedules are displayed in descending order (most recent first).
+
+**Source:** `CustomerController@schedule` (source: `app/Http/Controllers/CustomerController.php:75`)
+
+<Tip>
+  Active schedules (status ≠ COMPLETE) indicate vessels currently operating. Contact the vessel operator if you have questions about your shipment.
+</Tip>
+
+## Reviewing Transactions and Payments
+
+View detailed transaction history including payment status and amounts.
+
+**Route:** `GET /customer/settlement`
+
+**Controller:** `CustomerController@settlement` (source: `app/Http/Controllers/CustomerController.php:83`)
+
+**View:** `resources/views/customer/settlement.blade.php`
+
+### Settlement Details
+
+For each package, you can view:
+- **Package ID**
+- **Payment Status**
+  - **PAID** - Payment completed (cash or transfer received)
+  - **CREDIT** - Payment pending (Pay On Delivery)
+- **Total Amount** - Sum of all items (quantity × unit price)
+- **Package Details** - Origin, destination, and address
+
+### How Payment Status is Calculated
+
+The system checks the `receivables` table to determine payment status:
+- If a receivable record exists for your package → **PAID**
+- If no receivable record exists → **CREDIT** (payment on delivery)
+
+**Source:** `CustomerController@settlement` (source: `app/Http/Controllers/CustomerController.php:88-103`)
+
+<Info>
+  The total amount is calculated by summing all shipment items:
+  ```
+  Total = Σ(item.quantity × item.unit_price)
+  ```
+</Info>
+
+## Managing Account Settings
+
+Update your password and manage account preferences.
+
+**Route:** `GET /customer/setting`
+
+**Controller:** `CustomerController@setting` (source: `app/Http/Controllers/CustomerController.php:106`)
+
+**View:** `resources/views/customer/setting.blade.php`
+
+### Changing Your Password
+
+<Steps>
+  <Step title="Navigate to Settings">
+    Go to `/customer/setting` from the navigation menu.
+  </Step>
+
+  <Step title="Fill Password Form">
+    Enter:
+    - **Old Password** (`old_pass`) - Your current password
+    - **New Password** (`new_pass`) - Your new password
+    - **Confirm Password** (`con_pass`) - Re-enter new password
+  </Step>
+
+  <Step title="Submit Changes">
+    Click "UPDATE" to save your new password.
+    
+    **Route:** `POST /setting/change`
+    
+    **Controller:** `SettingController@ChangePassword` (source: `app/Http/Controllers/SettingController.php:93`)
+  </Step>
+</Steps>
+
+<Warning>
+  If the old password doesn't match or the new passwords don't match, you'll see an error: "Password doesent match". Verify your entries and try again.
+</Warning>
+
+**Success Message:** "Password Change Successfull"
+
+**Source:** `SettingController@ChangePassword` (source: `app/Http/Controllers/SettingController.php:96-108`)
+
+## Logging Out
+
+To securely log out of your account:
+
+**Route:** `GET /customer/logout`
+
+**Controller:** `CustomerController@logout` (source: `app/Http/Controllers/CustomerController.php:110`)
+
+**View:** `resources/views/customer/logout.blade.php`
+
+<Note>
+  The logout route requires authentication but does NOT require email verification, allowing unverified users to log out safely.
+</Note>
+
+## Common Customer Scenarios
+
+### Tracking a New Shipment
+
+<Steps>
+  <Step title="Receive Notification">
+    When a vessel operator creates a package for you, your account is either created or updated with the new package.
+  </Step>
+
+  <Step title="Check Dashboard">
+    Log in and visit your dashboard to see the latest package status.
+    
+    **Route:** `GET /customer/dashboard`
+  </Step>
+
+  <Step title="Monitor Progress">
+    Watch the package timeline to see when:
+    - Package is loaded
+    - Vessel departs
+    - Vessel arrives at destination
+    - Package is ready for collection
+  </Step>
+</Steps>
+
+### Verifying Package Contents
+
+While customers cannot view individual item details through the web interface, the settlement page shows the total amount. To verify contents:
+
+1. Visit **Transactions** (`/customer/settlement`)
+2. Check the total amount for your package
+3. Contact the vessel operator if you have questions about items
+
+### Checking Payment Due
+
+<Steps>
+  <Step title="Visit Settlement Page">
+    Go to `/customer/settlement` to view all transactions.
+  </Step>
+
+  <Step title="Check Payment Status">
+    - **PAID** = No payment due, already settled
+    - **CREDIT** = Payment due on delivery
+  </Step>
+
+  <Step title="Review Total Amount">
+    Note the total amount for any CREDIT transactions - this is what you'll pay upon collection.
+  </Step>
+</Steps>
+
+### Understanding Departure Status
+
+On your dashboard, the package timeline shows whether the vessel has departed:
+
+- **Active (highlighted)** - Departure date has passed, vessel is en route
+- **Inactive (grayed out)** - Departure date is in the future
+
+**Source:** `CustomerController@dashboard` (source: `app/Http/Controllers/CustomerController.php:65-66`)
+
+```php
+$DepatrueTime->isDepatured = ($DepatrueTime->dep_date <= $datetime);
+```
+
+## Troubleshooting
+
+### Cannot Access Dashboard
+
+**Problem:** Redirected to login when accessing customer routes.
+
+**Solution:** 
+1. Ensure you're logged in
+2. Verify your email address - most customer routes require verification
+3. Check that your account rank is set to "customer"
+
+**Middleware:** Routes under `auth` and `verified` middleware groups (source: `routes/web.php:29`)
+
+### No Packages Showing
+
+**Problem:** Dashboard shows "No order found".
+
+**Solution:** 
+- You may not have any packages yet
+- Contact a vessel operator to create a shipment for you
+- Packages are associated with your `custid` - verify this matches your customer record
+
+**Source:** `CustomerController@dashboard` (source: `app/Http/Controllers/CustomerController.php:54`)
+
+### Password Change Fails
+
+**Problem:** "Password doesent match" error.
+
+**Solution:**
+1. **Old password incorrect** - Verify you're entering your current password correctly
+2. **New passwords don't match** - Ensure `new_pass` and `con_pass` are identical
+
+**Validation:** `SettingController@ChangePassword` (source: `app/Http/Controllers/SettingController.php:96`)
+
+### Total Amount Seems Wrong
+
+**Problem:** Settlement total doesn't match expectations.
+
+**Solution:** 
+- The total is calculated from all items in the package
+- Each item contributes: `quantity × unit_price`
+- Contact the vessel operator to review item details
+- Items can be edited before the package is marked as COLLECTED
+
+**Calculation:** `CustomerController@settlement` (source: `app/Http/Controllers/CustomerController.php:98-101`)
+
+### Cannot See Vessel Contact
+
+**Problem:** Need to contact vessel operator but don't have their number.
+
+**Solution:**
+1. Visit **Schedule** page (`/customer/schedule`)
+2. Find the schedule for your vessel
+3. Note the **Vessel Contact** field
+
+**Source:** Schedule includes `vessel_Contact` from vessel operator (source: `app/Http/Controllers/SettingController.php:48`)
+
+## Quick Reference
+
+### Customer Routes
+
+| Page | Route | Controller | Description |
+|------|-------|------------|-------------|
+| Dashboard | GET `/customer/dashboard` | CustomerController@dashboard | Overview and latest package |
+| Schedule | GET `/customer/schedule` | CustomerController@schedule | Vessel departure times |
+| Transactions | GET `/customer/transaction` | CustomerController@transaction | All package history |
+| Settlement | GET `/customer/settlement` | CustomerController@settlement | Payment status and totals |
+| Settings | GET `/customer/setting` | CustomerController@setting | Account settings |
+| Logout | GET `/customer/logout` | CustomerController@logout | Log out |
+| Change Password | POST `/setting/change` | SettingController@ChangePassword | Update password |
+
+### Package Lifecycle
+
+1. **LOADING** - Vessel operator creating package, adding items
+2. **LOADED** - Package complete, on vessel
+3. Vessel departs (based on schedule)
+4. Vessel arrives at destination
+5. **COLLECTED** - Package delivered to customer
+
+### Payment Workflow
+
+#### Pay On Delivery (POD)
+- Payment status: **CREDIT**
+- Pay when collecting package
+- No receivable record created during loading
+- Payment recorded when collected
+
+#### Pay Now
+- Payment status: **PAID**
+- Payment made when package created
+- Receivable record created immediately
+- Can be CASH or TRANSFER (with slip)
+
+## Related Documentation
+
+- [Vessel Operator Guide](/guides/vessel-operators) - How operators manage your shipments
+- [Admin Settings Guide](/guides/admin-settings) - System configuration (for admins)
+- [API Reference](/api-reference) - For developers integrating with NaaleMV

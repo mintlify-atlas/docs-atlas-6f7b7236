@@ -1,0 +1,605 @@
+---
+title: 'Admin & Settings Guide'
+description: 'Complete guide for administrators to manage users, vessels, islands, categories, and system settings in NaaleMV'
+---
+
+# Admin & Settings Guide
+
+This guide covers administrative functions in NaaleMV, including user management, vessel configuration, island setup, category management, and system settings.
+
+## Accessing Settings
+
+Administrators and vessel owners can access system settings through the settings page.
+
+**Route:** `GET /setting`
+
+**Controller:** `SettingController@index` (source: `app/Http/Controllers/SettingController.php:27`)
+
+**View:** `resources/views/dhi/setting.blade.php` or `resources/views/eng/setting.blade.php`
+
+<Info>
+  Settings access requires authentication and email verification. Customers are redirected to their customer dashboard.
+</Info>
+
+## User Management
+
+### Viewing Users
+
+The settings page displays all users associated with your vessel who are not customers.
+
+**Source:** `SettingController@index` (source: `app/Http/Controllers/SettingController.php:32`)
+
+```php
+$users = User::where('boatid', auth()->user()->boatid)
+             ->where('rank', '!=', 'customer')
+             ->get();
+```
+
+User list shows:
+- Full Name
+- Contact Number
+- Email Address
+- Status (Active/Inactive)
+
+### Adding Vessel Operators (Crew)
+
+Create new crew members who can operate the system on behalf of your vessel.
+
+<Steps>
+  <Step title="Access User Creation Form">
+    From the settings page, click the "+ " button in the users section or access the user creation popup.
+  </Step>
+
+  <Step title="Fill User Details">
+    Enter the following required information:
+    - **Full Name** (`Fname`) - Required, string, max 255 characters
+    - **Email** (`email`) - Required, must be unique
+    - **Contact Number** (`contact`) - Required, integer, must be unique
+    - **Password** (`password`) - Required
+    - **Password Confirmation** (`password_confirmation`) - Must match password
+    
+    The boat ID is automatically set to your vessel.
+  </Step>
+
+  <Step title="Submit Form">
+    Click "Create" to add the new crew member.
+    
+    **Route:** `POST /setting/user`
+    
+    **Controller:** `SettingController@AddNewUser` (source: `app/Http/Controllers/SettingController.php:59`)
+  </Step>
+</Steps>
+
+**View Reference:** `resources/views/dhi/setting.blade.php:72-83`
+
+<Warning>
+  - Contact number must be unique across all users
+  - Password and confirmation must match exactly
+  - New users are automatically assigned rank "CREW"
+</Warning>
+
+**Success Message:** "New Crew is created"
+
+**Error Message:** "Password dont match" (if passwords don't match)
+
+### Updating User Information
+
+Modify existing user details including personal information and password.
+
+<Steps>
+  <Step title="Select User">
+    Click on a user from the user list to edit.
+  </Step>
+
+  <Step title="Update Information">
+    You can modify:
+    - **Full Name** (`Fname`)
+    - **Contact Number** (`contact`)
+    - **Email** (`email`)
+    - **Status** (`status`) - Active/Inactive
+    - **Password** (`password`) - Optional
+    - **Password Confirmation** (`password_confirmation`) - Required if changing password
+  </Step>
+
+  <Step title="Save Changes">
+    Submit the form to update the user.
+    
+    **Route:** `PATCH /setting/user/{user_id}`
+    
+    **Controller:** `SettingController@update` (source: `app/Http/Controllers/SettingController.php:142`)
+  </Step>
+</Steps>
+
+**Source:** `SettingController@update` (source: `app/Http/Controllers/SettingController.php:144-164`)
+
+<Note>
+  If you're updating the password:
+  - The password field must not be empty
+  - Password and confirmation must match
+  - The password will be hashed before storage
+</Note>
+
+**Success Messages:**
+- "Password Change Successfull" (if password updated)
+- "User update Sucessfull" (if other fields updated)
+
+**Error Message:** "Password doesent match" (if password confirmation fails)
+
+## Vessel Configuration
+
+### Viewing Vessel Details
+
+The settings page displays your vessel information (read-only):
+- **Boat Name**
+- **Owner** - Currently logged-in user's full name
+- **Contact Number** - Your contact number
+- **Boat Island** - Home island of the vessel
+
+**Source:** `SettingController@index` (source: `app/Http/Controllers/SettingController.php:29`)
+
+```php
+$vessel = vessel::find(auth()->user()->boatid);
+```
+
+**View Reference:** `resources/views/dhi/setting.blade.php:4-12`
+
+<Info>
+  Vessel details are currently read-only in the interface. Contact system administrator to modify vessel information.
+</Info>
+
+### Managing Vessel Schedules (Dathuru)
+
+Create and manage departure schedules for your vessel.
+
+#### Creating a Schedule
+
+<Steps>
+  <Step title="Access Schedule Form">
+    On the settings page, locate the vessel schedule section.
+  </Step>
+
+  <Step title="Fill Schedule Information">
+    Enter:
+    - **Departure Date** (`DDate`) - Required, date/time of departure
+    - **Visiting To** (`VI`) - Required, islands to visit
+    - **Dock Island** (`DI`) - Required, final destination island
+    
+    The system automatically adds:
+    - **Vessel Name** - From your vessel record
+    - **Vessel Contact** - Your contact number
+    - **Status** - Initially empty
+  </Step>
+
+  <Step title="Save Schedule">
+    Submit the form to create the schedule.
+    
+    **Route:** `POST /setting/dathuru`
+    
+    **Controller:** `SettingController@dathuru` (source: `app/Http/Controllers/SettingController.php:36`)
+  </Step>
+</Steps>
+
+**Source:** `SettingController@dathuru` (source: `app/Http/Controllers/SettingController.php:42-51`)
+
+#### Updating Schedules
+
+Modify existing schedules to change dates or mark as complete.
+
+<Steps>
+  <Step title="Select Schedule">
+    Choose the schedule you want to update.
+  </Step>
+
+  <Step title="Update Information">
+    You can modify:
+    - **Departure Date** (`DDate`)
+    - **Status** (`status`) - Custom status text
+    - **Completed** (`completed`) - Set to "COMPLETE" to mark schedule as finished
+  </Step>
+
+  <Step title="Save Changes">
+    Submit the update form.
+    
+    **Route:** `PATCH /setting/dathuru/{schedule_id}`
+    
+    **Controller:** `SettingController@dathuruUpdate` (source: `app/Http/Controllers/SettingController.php:167`)
+  </Step>
+</Steps>
+
+**Source:** `SettingController@dathuruUpdate` (source: `app/Http/Controllers/SettingController.php:169-185`)
+
+<Tip>
+  Mark schedules as "COMPLETE" when the voyage is finished. This helps customers differentiate between active and past schedules.
+</Tip>
+
+**Success Message:** "Dhathuru update Sucessfull"
+
+### Viewing Active Schedule
+
+The settings page displays your current active schedule (status ≠ 'COMPLETE').
+
+**Source:** `SettingController@index` (source: `app/Http/Controllers/SettingController.php:30`)
+
+```php
+$DepatrueTime = schedule::where([['vessel_name', $vessel->name], 
+                                  ['status', '!=', 'COMPLETE']])
+                        ->orderByDesc('id')
+                        ->first();
+```
+
+## Island and Atoll Configuration
+
+### Viewing All Islands
+
+The settings page displays all configured islands in alphabetical order.
+
+**Source:** `SettingController@index` (source: `app/Http/Controllers/SettingController.php:31`)
+
+```php
+$allIslands = islands::orderBy('name', 'asc')->get();
+```
+
+### Adding New Islands
+
+Expand the system by adding new islands and atolls.
+
+<Steps>
+  <Step title="Navigate to Dashboard">
+    Go to the main dashboard (`/dashboard`) to access island management.
+    
+    **Route:** `GET /dashboard`
+    
+    **Controller:** `ShipmentController@island` (source: `app/Http/Controllers/ShipmentController.php:43`)
+  </Step>
+
+  <Step title="Fill Island Details">
+    Enter:
+    - **Atoll** (`atoll`) - Required (e.g., "B", "L", "K", "AA")
+    - **Island Name** (`name`) - Required (e.g., "Isdhoo", "Male")
+    - **Island Code** (`code`) - Required (e.g., "L.ISDHOO", "K.MALE")
+  </Step>
+
+  <Step title="Submit Form">
+    Click submit to create the island.
+    
+    **Route:** `POST /dashboard/island`
+    
+    **Controller:** `ShipmentController@createIsland` (source: `app/Http/Controllers/ShipmentController.php:53`)
+    
+    If the atoll doesn't exist, it will be created automatically with:
+    - Name: Uppercase version of entered atoll
+    - Code: "-" (placeholder)
+  </Step>
+</Steps>
+
+**Source:** `ShipmentController@createIsland` (source: `app/Http/Controllers/ShipmentController.php:59-74`)
+
+<Info>
+  The system automatically creates missing atolls, ensuring island-atoll relationships are maintained.
+</Info>
+
+**View:** `resources/views/dhi/dashboard.blade.php`
+
+## Category Management
+
+Categories define the types of items that can be shipped, including default pricing.
+
+### Viewing Categories
+
+Access all shipment categories with their prices and images.
+
+**Route:** `GET /category`
+
+**Controller:** `CategoryController@index` (source: `app/Http/Controllers/CategoryController.php:17`)
+
+**View:** `resources/views/dhi/category.blade.php`
+
+Categories display:
+- Category image
+- Category name
+- Default unit price (MVR per unit)
+
+### Creating Categories
+
+<Steps>
+  <Step title="Access Category Page">
+    Navigate to `/category` and click "+ އާ ބާވަތެއް ހަދަން" (Add New Category).
+  </Step>
+
+  <Step title="Enter Category Details">
+    Fill in:
+    - **Category Name** (`cate_name`) - Required, string
+    - **Unit Price** (`unit_price`) - Required, numeric
+    - **Image** (`img`) - Optional image file
+    
+    If no image is provided, the system uses "default.png".
+  </Step>
+
+  <Step title="Save Category">
+    Submit the form to create the category.
+    
+    **Route:** `POST /category`
+    
+    **Controller:** `CategoryController@store` (source: `app/Http/Controllers/CategoryController.php:41`)
+  </Step>
+</Steps>
+
+**Source:** `CategoryController@store` (source: `app/Http/Controllers/CategoryController.php:48-60`)
+
+**Image Handling:**
+- Images are saved to `public/img/` directory
+- Filename format: `{timestamp}_{category_name}.{extension}`
+- Default image: "default.png"
+
+### Searching Categories
+
+Quickly find categories by name using the search feature.
+
+**Route:** `GET /searchcate?s={search_term}`
+
+**Controller:** `CategoryController@searchcate` (source: `app/Http/Controllers/CategoryController.php:29`)
+
+Returns JSON array of matching categories (partial match on `cate_name`).
+
+**Source:** `CategoryController@searchcate` (source: `app/Http/Controllers/CategoryController.php:31`)
+
+```php
+$searchCate = category::where('cate_name', 'LIKE', "%$request->s%")->get();
+```
+
+## Password Management
+
+### Changing Your Own Password
+
+Update your account password from the settings page.
+
+<Steps>
+  <Step title="Access Password Form">
+    On the settings page, locate the "Change Password" section.
+  </Step>
+
+  <Step title="Enter Passwords">
+    Fill in:
+    - **Old Password** (`old_pass`) - Your current password
+    - **New Password** (`new_pass`) - Your new password
+    - **Confirm Password** (`con_pass`) - Re-enter new password
+  </Step>
+
+  <Step title="Submit Changes">
+    Click "UPDATE" to change your password.
+    
+    **Route:** `POST /setting/change`
+    
+    **Controller:** `SettingController@ChangePassword` (source: `app/Http/Controllers/SettingController.php:93`)
+  </Step>
+</Steps>
+
+**View Reference:** `resources/views/dhi/setting.blade.php:35-42`
+
+**Validation Logic:**
+1. Old password must match current password (hashed comparison)
+2. New password must match confirmation password
+3. Both conditions must be true for success
+
+**Source:** `SettingController@ChangePassword` (source: `app/Http/Controllers/SettingController.php:96-100`)
+
+```php
+if (!Hash::check($request['old_pass'], $user->password) || 
+    $request['new_pass'] != $request['con_pass']) {
+    // Error
+}
+```
+
+**Success Message:** "Password Change Successfull"
+
+**Error Message:** "Password doesent match"
+
+<Note>
+  The password change function works for both vessel operators and customers. Customers are redirected to `/customer/setting` after the operation.
+</Note>
+
+## System Settings
+
+### Language Preference
+
+NaaleMV supports bilingual operation (Dhivehi and English).
+
+**Session Variable:** `isDhivehi`
+
+**Usage in Controllers:**
+```php
+Session::get('isDhivehi') ? $lang = "dhi" : $lang = "eng";
+return view("$lang.create", $data);
+```
+
+Views are organized in:
+- `resources/views/dhi/` - Dhivehi language views
+- `resources/views/eng/` - English language views
+
+### Authentication and Authorization
+
+#### Middleware Configuration
+
+Routes are protected by middleware:
+
+**Authentication Only** (`auth` middleware):
+- `GET /customer/logout` - Logout (no verification required)
+
+**Authentication + Verification** (`auth`, `verified` middleware):
+- All customer routes (`/customer/*`)
+- All vessel operator routes (`/dashboard`, `/create`, `/collect`, etc.)
+- Settings and configuration routes
+
+**Source:** `routes/web.php:25-57`
+
+#### User Ranks
+
+The system supports multiple user ranks:
+- **customer** - Regular customers tracking packages
+- **CREW** - Vessel operators (default for new users)
+- Additional ranks as configured
+
+**Rank Checking Example:**
+```php
+if (auth()->user()->rank == "customer") {
+    return redirect('/customer/dashboard');
+}
+```
+
+**Source:** `ShipmentController@island` (source: `app/Http/Controllers/ShipmentController.php:44`)
+
+## Troubleshooting
+
+### Cannot Add User
+
+**Problem:** Error when creating new crew member.
+
+**Solutions:**
+- **"Contact already exists"** - Contact number must be unique. Use a different number.
+- **"Password dont match"** - Ensure password and password_confirmation are identical.
+- **Validation errors** - Check all required fields are filled:
+  - Full Name (string, max 255)
+  - Email (valid format)
+  - Contact (numeric)
+  - Password
+
+**Source:** `SettingController@AddNewUser` (source: `app/Http/Controllers/SettingController.php:62-71`)
+
+### Schedule Not Showing to Customers
+
+**Problem:** Created schedule doesn't appear on customer schedule page.
+
+**Solution:**
+- Verify the schedule was created successfully (check redirect to `/setting`)
+- Ensure vessel name matches your vessel record exactly
+- Schedules are displayed in descending order; check if it's at the top
+- Customers see ALL schedules, not filtered by vessel
+
+**Source:** `CustomerController@schedule` (source: `app/Http/Controllers/CustomerController.php:75`)
+
+### Island Not Appearing in Dropdowns
+
+**Problem:** Added island doesn't show in island selection lists.
+
+**Solution:**
+- Verify island was created (check `allIslands` list on dashboard)
+- Islands are ordered alphabetically - check the correct position
+- Ensure the island code format is correct (e.g., "L.ISDHOO")
+- Check that the atoll was created or linked properly
+
+**Source:** `ShipmentController@island` (source: `app/Http/Controllers/ShipmentController.php:47`)
+
+### Category Image Not Displaying
+
+**Problem:** Category image shows broken or uses default.
+
+**Solutions:**
+- Verify `public/img/` directory exists and is writable
+- Check file extension is standard image format (jpg, png, gif)
+- Image path is stored as filename only, not full path
+- Default image "default.png" must exist in `public/img/`
+
+**Source:** `CategoryController@store` (source: `app/Http/Controllers/CategoryController.php:48-52`)
+
+### Password Change Fails for Crew
+
+**Problem:** User password update through user edit form fails silently.
+
+**Solution:**
+- Leave password field empty if not changing password
+- If changing password:
+  - Password field must not be empty
+  - Password confirmation must match exactly
+- Check for error message "Password doesent match"
+
+**Source:** `SettingController@update` (source: `app/Http/Controllers/SettingController.php:152-159`)
+
+### Cannot Access Settings
+
+**Problem:** Redirected when accessing `/setting`.
+
+**Solutions:**
+- Ensure you're logged in (requires `auth` middleware)
+- Verify your email address (requires `verified` middleware)
+- If you're a customer, you'll be redirected to `/customer/setting` instead
+
+**Middleware:** `routes/web.php:29`
+
+## Security Best Practices
+
+### Password Security
+
+- All passwords are hashed using Laravel's `Hash::make()` before storage
+- Password verification uses `Hash::check()` for secure comparison
+- Never store or transmit passwords in plain text
+
+**Source:** `SettingController@AddNewUser` (source: `app/Http/Controllers/SettingController.php:80`)
+
+### User Data Protection
+
+- Users can only view/edit users from their own vessel (`boatid` filter)
+- Customer data is protected by authentication and verification
+- Contact numbers must be unique across the entire system
+
+### File Upload Security
+
+- Image uploads are restricted to specific directories:
+  - Category images: `public/img/`
+  - Item images: `public/item_img/`
+- Filenames are prefixed with timestamps to prevent collisions
+- Consider implementing file type validation and size limits
+
+## Quick Reference
+
+### Admin Routes
+
+| Action | Method | Route | Controller |
+|--------|--------|-------|------------|
+| View Settings | GET | `/setting` | SettingController@index |
+| Add User | POST | `/setting/user` | SettingController@AddNewUser |
+| Update User | PATCH | `/setting/user/{id}` | SettingController@update |
+| Change Password | POST | `/setting/change` | SettingController@ChangePassword |
+| Create Schedule | POST | `/setting/dathuru` | SettingController@dathuru |
+| Update Schedule | PATCH | `/setting/dathuru/{id}` | SettingController@dathuruUpdate |
+| Add Island | POST | `/dashboard/island` | ShipmentController@createIsland |
+| View Categories | GET | `/category` | CategoryController@index |
+| Add Category | POST | `/category` | CategoryController@store |
+| Search Category | GET | `/searchcate?s={term}` | CategoryController@searchcate |
+
+### User Roles
+
+| Rank | Access Level | Description |
+|------|--------------|-------------|
+| customer | Customer routes only | Can view packages, schedules, transactions |
+| CREW | Vessel operations | Can create shipments, manage collections |
+| Owner/Admin | All features | Full access to settings, users, configuration |
+
+### Validation Rules
+
+#### New User
+- **Fname** - Required, string, max 255
+- **Email** - Required
+- **Contact** - Required, integer, unique
+- **Password** - Required
+- **Password Confirmation** - Must match password
+
+#### New Category
+- **cate_name** - Required, string
+- **unit_price** - Required
+- **img** - Optional
+
+#### New Island
+- **atoll** - Required
+- **name** - Required
+- **code** - Required
+
+#### New Schedule
+- **DDate** - Required (departure date)
+- **VI** - Required (visiting islands)
+- **DI** - Required (dock island)
+
+## Related Documentation
+
+- [Vessel Operator Guide](/guides/vessel-operators) - Daily operations and shipment management
+- [Customer Guide](/guides/customers) - Customer features and tracking
+- [API Reference](/api-reference) - Integrate with NaaleMV programmatically

@@ -1,0 +1,391 @@
+---
+title: 'Vessel Operator Guide'
+description: 'Complete guide for vessel operators managing shipments, packages, and collections in NaaleMV'
+---
+
+# Vessel Operator Guide
+
+This guide covers the daily workflow and operations for vessel operators using the NaaleMV system. Vessel operators are responsible for creating shipments, managing packages, and processing collections.
+
+## Getting Started
+
+### Accessing the System
+
+Vessel operators log in using their credentials at `/login`. Upon successful authentication, you'll be redirected to the main dashboard.
+
+**Route:** `GET /dashboard`
+
+**Controller:** `ShipmentController@island` (source: `app/Http/Controllers/ShipmentController.php:43`)
+
+## Daily Workflow
+
+### 1. Dashboard Overview
+
+The vessel operator dashboard displays:
+- List of all islands (ordered alphabetically)
+- Island management options
+- Quick access to shipment creation
+
+**View:** `resources/views/dhi/dashboard.blade.php` or `resources/views/eng/dashboard.blade.php` (based on language preference)
+
+### 2. Creating a Shipment
+
+Shipment creation is a multi-step process that involves customer registration and package details.
+
+<Steps>
+  <Step title="Access Customer Creation">
+    Navigate to `/customer` to start a new shipment. If there's a package currently in "LOADING" status, you'll be automatically redirected to continue that shipment.
+    
+    **Route:** `GET /customer`
+    
+    **Controller:** `CustomerController@index` (source: `app/Http/Controllers/CustomerController.php:22`)
+  </Step>
+
+  <Step title="Enter Customer Information">
+    Fill in the customer details form:
+    - **Customer Number** (`CustNumber`) - Required
+    - **Customer Name** (`CustName`) - Optional
+    - **Customer Address** (`CustAddress`) - Required
+    - **Loading From** (`LFrom`) - Required (e.g., "K.MALE")
+    - **Unloading To** (`ULTo`) - Required (e.g., "L.ISDHOO")
+    
+    Submit the form to create or update customer information and create a package.
+    
+    **Route:** `POST /customer`
+    
+    **Controller:** `CustomerController@store` (source: `app/Http/Controllers/CustomerController.php:122`)
+  </Step>
+
+  <Step title="Add Shipment Items">
+    After customer creation, you'll be redirected to `/create` where you can add items to the shipment.
+    
+    **Route:** `GET /create`
+    
+    **Controller:** `ShipmentController@index` (source: `app/Http/Controllers/ShipmentController.php:22`)
+    
+    For each item:
+    - Select a category from the available categories
+    - Enter **Quantity** (`qty`) - Required
+    - Enter **Unit Price** (`unit_price`) - Required
+    - Optionally upload an image (`img`)
+    
+    Click "AddItem" to add the item to the package.
+    
+    **Route:** `POST /create`
+    
+    **Controller:** `ShipmentController@store` (source: `app/Http/Controllers/ShipmentController.php:98`)
+  </Step>
+
+  <Step title="Configure Payment Details">
+    Choose payment option:
+    - **Pay On Delivery (POD)** - Payment will be collected upon delivery
+    - **Pay Now** - Payment is collected immediately
+      - **Cash** - Cash payment
+      - **Transfer** - Bank transfer (requires payment slip upload)
+    
+    **View:** `resources/views/dhi/create.blade.php:84-95`
+  </Step>
+
+  <Step title="Save the Shipment">
+    Click "Save" to finalize the shipment. The package status will be updated to "LOADED".
+    
+    **Route:** `POST /confirm`
+    
+    **Controller:** `PackageController@store` (source: `app/Http/Controllers/PackageController.php:54`)
+  </Step>
+</Steps>
+
+### 3. Creating Guest Shipments
+
+For customers without a registered number, you can create guest shipments:
+
+<Steps>
+  <Step title="Start Guest Shipment">
+    From the `/create` page, add items directly without filling customer information.
+  </Step>
+
+  <Step title="Add Items">
+    Select a category and click "AddItem_Guest". The system will:
+    - Create a guest customer with `CustNumber = 0`
+    - Create a package automatically
+    - Add your item to the package
+    
+    **Controller:** `ShipmentController@store` (source: `app/Http/Controllers/ShipmentController.php:122-175`)
+  </Step>
+</Steps>
+
+## Managing Categories
+
+### Viewing Categories
+
+Access the category management page to view all available shipment categories.
+
+**Route:** `GET /category`
+
+**Controller:** `CategoryController@index` (source: `app/Http/Controllers/CategoryController.php:17`)
+
+### Adding New Categories
+
+<Steps>
+  <Step title="Access Category Form">
+    From the category page, click "+ އާ ބާވަތެއް ހަދަން" (Add New Category).
+  </Step>
+
+  <Step title="Fill Category Details">
+    - **Category Name** (`cate_name`) - Required
+    - **Unit Price** (`unit_price`) - Required
+    - **Image** (`img`) - Optional (defaults to "default.png")
+  </Step>
+
+  <Step title="Save Category">
+    Submit the form to create the category.
+    
+    **Route:** `POST /category`
+    
+    **Controller:** `CategoryController@store` (source: `app/Http/Controllers/CategoryController.php:41`)
+  </Step>
+</Steps>
+
+### Searching Categories
+
+Use the category search feature to quickly find categories by name.
+
+**Route:** `GET /searchcate?s={search_term}`
+
+**Controller:** `CategoryController@searchcate` (source: `app/Http/Controllers/CategoryController.php:29`)
+
+## Processing Collections
+
+### Viewing All Packages
+
+Access the collection page to view all packages assigned to your vessel.
+
+**Route:** `GET /collect`
+
+**Controller:** `CollectionController@index` (source: `app/Http/Controllers/CollectionController.php:21`)
+
+**View:** `resources/views/dhi/collect.blade.php`
+
+Packages are displayed in descending order by ID (most recent first).
+
+### Searching for Packages
+
+Search packages by:
+- Customer address (`CustAddress`)
+- Destination (`to`)
+- Package ID (`id`)
+
+**Route:** `GET /collect/search?q={search_term}`
+
+**Controller:** `CollectionController@search` (source: `app/Http/Controllers/CollectionController.php:47`)
+
+### Processing a Collection
+
+<Steps>
+  <Step title="View Package Details">
+    Click on a package to view full details.
+    
+    **Route:** `GET /clam?packid={package_id}`
+    
+    **Controller:** `CollectionController@clam` (source: `app/Http/Controllers/CollectionController.php:28`)
+    
+    **View:** `resources/views/dhi/clam.blade.php`
+    
+    This displays:
+    - Package information
+    - Customer details
+    - All items in the package with total calculation
+    - Payment status
+  </Step>
+
+  <Step title="Update Payment (if needed)">
+    If the package was marked as "Pay On Delivery", update the payment:
+    - Select payment option: **NOW**
+    - Choose payment type: **CASH** or **TRANSFER**
+    - If transfer, upload payment slip
+    
+    <Warning>
+      You cannot mark a package as "COLLECTED" if payment option is still set to "POD". Update payment details first.
+    </Warning>
+  </Step>
+
+  <Step title="Edit Items (if needed)">
+    You can edit item quantities and prices before finalizing collection.
+    
+    **Route:** `PATCH /edit/{item_id}`
+    
+    **Controller:** `CollectionController@edit` (source: `app/Http/Controllers/CollectionController.php:139`)
+  </Step>
+
+  <Step title="Mark as Collected">
+    Click the "Complete" button to mark the package as collected.
+    
+    **Route:** `POST /clam`
+    
+    **Controller:** `CollectionController@complete` (source: `app/Http/Controllers/CollectionController.php:69`)
+    
+    The system will:
+    - Verify payment details are complete
+    - Create receivables record if payment is NOW
+    - Update package status to "COLLECTED"
+  </Step>
+</Steps>
+
+## Managing Vessel Schedules
+
+Vessel schedules help customers track departure times and vessel locations.
+
+### Creating a Schedule (Dathuru)
+
+<Steps>
+  <Step title="Access Settings">
+    Navigate to `/setting` and scroll to the schedule section.
+    
+    **Route:** `GET /setting`
+    
+    **Controller:** `SettingController@index` (source: `app/Http/Controllers/SettingController.php:27`)
+  </Step>
+
+  <Step title="Fill Schedule Details">
+    - **Departure Date** (`DDate`) - Required
+    - **Visiting To** (`VI`) - Islands to visit - Required
+    - **Dock Island** (`DI`) - Final dock location - Required
+  </Step>
+
+  <Step title="Save Schedule">
+    Submit the form to create the schedule.
+    
+    **Route:** `POST /setting/dathuru`
+    
+    **Controller:** `SettingController@dathuru` (source: `app/Http/Controllers/SettingController.php:36`)
+    
+    The schedule includes:
+    - Vessel name (from your vessel record)
+    - Your contact number
+    - Status (initially empty, can be updated later)
+  </Step>
+</Steps>
+
+### Updating Schedules
+
+Update existing schedules to change departure dates or mark as complete.
+
+**Route:** `PATCH /setting/dathuru/{schedule_id}`
+
+**Controller:** `SettingController@dathuruUpdate` (source: `app/Http/Controllers/SettingController.php:167`)
+
+To mark a schedule as complete, set `completed = "COMPLETE"`.
+
+## Island Management
+
+### Adding New Islands
+
+As a vessel operator, you can add new islands to the system.
+
+<Steps>
+  <Step title="Access Dashboard">
+    From the main dashboard at `/dashboard`, access the island creation form.
+  </Step>
+
+  <Step title="Enter Island Details">
+    - **Atoll** (`atoll`) - Required (e.g., "B", "L", "K")
+    - **Island Name** (`name`) - Required
+    - **Island Code** (`code`) - Required
+    
+    If the atoll doesn't exist, it will be created automatically.
+  </Step>
+
+  <Step title="Save Island">
+    Submit the form to create the island.
+    
+    **Route:** `POST /dashboard/island`
+    
+    **Controller:** `ShipmentController@createIsland` (source: `app/Http/Controllers/ShipmentController.php:53`)
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Cannot Save Shipment
+
+**Problem:** "No item added" error when trying to save.
+
+**Solution:** You must add at least one item to the package before saving. Go back to `/create` and add items.
+
+**Reference:** `PackageController@store` (source: `app/Http/Controllers/PackageController.php:57`)
+
+### Transfer Payment Requires Slip
+
+**Problem:** "Please Attach the slip" error.
+
+**Solution:** When selecting "Transfer" as payment type, you must upload a payment slip image. Use the file input field to attach the slip.
+
+**Reference:** `PackageController@store` (source: `app/Http/Controllers/PackageController.php:82`)
+
+### Cannot Mark Package as Collected
+
+**Problem:** "Update payment details before Marking collected" error.
+
+**Solution:** The package still has payment option set to "POD". Change the payment option to "NOW" and provide payment details (CASH or TRANSFER with slip).
+
+**Reference:** `CollectionController@complete` (source: `app/Http/Controllers/CollectionController.php:73`)
+
+### Stuck in Loading Mode
+
+**Problem:** Redirected to `/create` when trying to start a new shipment.
+
+**Solution:** You have an active package in "LOADING" status. Either:
+1. Complete the current package by saving it
+2. Cancel the package from the `/create` page
+
+Canceling will delete all added items and customer details for that package.
+
+**Reference:** `CustomerController@index` (source: `app/Http/Controllers/CustomerController.php:36-43`)
+
+### Image Upload Issues
+
+**Problem:** Images not displaying after upload.
+
+**Solution:** Ensure:
+- The `public/item_img` directory exists and is writable for item images
+- The `public/img` directory exists and is writable for payment slips
+- File extensions are standard image formats (jpg, png, etc.)
+
+Images are saved with timestamp prefixes to prevent conflicts.
+
+**Reference:** `ShipmentController@store` (source: `app/Http/Controllers/ShipmentController.php:108-110`)
+
+## Quick Reference
+
+### Key Routes
+
+| Action | Method | Route | Controller |
+|--------|--------|-------|------------|
+| View Dashboard | GET | `/dashboard` | ShipmentController@island |
+| Create Customer | GET/POST | `/customer` | CustomerController@index/store |
+| Create Shipment | GET/POST | `/create` | ShipmentController@index/store |
+| View Collections | GET | `/collect` | CollectionController@index |
+| Process Collection | GET/POST | `/clam` | CollectionController@clam/complete |
+| Manage Categories | GET/POST | `/category` | CategoryController@index/store |
+| View Settings | GET | `/setting` | SettingController@index |
+| Create Schedule | POST | `/setting/dathuru` | SettingController@dathuru |
+| Add Island | POST | `/dashboard/island` | ShipmentController@createIsland |
+
+### Package Status Flow
+
+1. **LOADING** - Package created, items being added
+2. **LOADED** - Package finalized, ready for delivery
+3. **COLLECTED** - Package delivered and collected
+
+### Payment Options
+
+- **POD** - Pay On Delivery (payment collected at destination)
+- **NOW** - Pay Now (payment collected at loading)
+  - **CASH** - Cash payment
+  - **TRANSFER** - Bank transfer (requires slip)
+
+## Related Documentation
+
+- [Customer Guide](/guides/customers) - Understanding the customer experience
+- [Admin Settings Guide](/guides/admin-settings) - Managing users and system settings
+- [API Reference](/api-reference) - Integrate with NaaleMV programmatically

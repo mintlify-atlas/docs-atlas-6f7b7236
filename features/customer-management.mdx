@@ -1,0 +1,364 @@
+---
+title: Customer Management
+description: Register customers, manage profiles, and track transaction history
+icon: users
+---
+
+Customer Management handles customer registration, lookup, and provides customers with a comprehensive dashboard to track their shipments and transactions.
+
+## Customer Registration
+
+The system supports both new customer registration and lookup of existing customers:
+
+### Registration Process
+
+<Steps>
+  <Step title="Enter Customer Number">
+    Input the customer's unique identification number.
+    
+    ```php
+    // CustomerController.php:124-128
+    $this->validate($request, [
+        'CustNumber' => ['required'],
+        'CustAddress' => ['required'],
+        'LFrom' => ['required'],
+        'ULTo' => ['required']
+    ]);
+    ```
+  </Step>
+  
+  <Step title="Check Existing Records">
+    System automatically checks if customer exists:
+    
+    ```php
+    // CustomerController.php:138-151
+    if (customer::where('CustNumber', request('CustNumber'))->exists()){
+        $_Customer = customer::where('CustNumber', request('CustNumber'))->get();
+        
+        // Update name if changed
+        if($_Customer[0]->CustName != request('CustName')){
+            Customer::where('CustNumber', request('CustNumber'))->update([
+                'CustName' => request('CustName')
+            ]);
+        }
+        $Cust = customer::all('id','CustNumber');
+    } else {
+        $NewCustomer->save();
+        $Cust = customer::all('id','CustNumber');
+    }
+    ```
+  </Step>
+  
+  <Step title="Create or Update Profile">
+    - **New Customer**: Creates new record with name and number
+    - **Existing Customer**: Updates name if changed
+    - Associates customer with new package
+  </Step>
+</Steps>
+
+<Note>
+The system automatically updates customer names if they differ from previous records, ensuring information stays current.
+</Note>
+
+## Customer Lookup
+
+Retrieve customer information by customer number:
+
+```php
+// CustomerController.php:192-197
+public function customerInfo(Request $request)
+{
+    $CustNo = $request->custno;
+    $CustomerInfo = customer::where('CustNumber', $CustNo)->get();
+    return $CustomerInfo;
+}
+```
+
+This endpoint is typically used during shipment creation to:
+- Auto-fill customer details
+- Verify customer existence
+- Retrieve customer ID for package association
+
+## Customer Dashboard
+
+The customer dashboard provides a comprehensive view of shipment activity:
+
+### Dashboard Overview
+
+```php
+// CustomerController.php:51-72
+public function dashboard()
+{
+    $datetime = date('Y-m-d H:i:s');
+    $LastPack = package::with('VesselName')
+        ->where([['customer_id',auth()->user()->custid]])
+        ->orderByDesc('id')
+        ->First();
+    
+    $transaction = package::where('customer_id',auth()->user()->custid)
+        ->orderByDesc('id')
+        ->get();
+    
+    $TransColl = package::where([['customer_id',auth()->user()->custid],
+                                  ['status','COLLECTED']])->get();
+    
+    $TransShipped = package::where([['customer_id',auth()->user()->custid],
+                                     ['status','!=','COLLECTED']])->get();
+    
+    $transaction->TotalShipments = count($transaction);
+    $transaction->Collected = count($TransColl);
+    $transaction->Shipped = count($TransShipped);
+}
+```
+
+### Dashboard Features
+
+<CardGroup cols={2}>
+  <Card title="Last Package Status" icon="box">
+    Shows most recent shipment with:
+    - Current status (LOADING, LOADED, COLLECTED)
+    - Vessel information
+    - Departure time
+  </Card>
+  
+  <Card title="Transaction Summary" icon="chart-line">
+    Displays counts for:
+    - Total shipments
+    - Collected packages
+    - Packages in transit
+  </Card>
+  
+  <Card title="Departure Tracking" icon="calendar-clock">
+    Real-time departure status:
+    - Scheduled departure time
+    - Whether vessel has departed
+  </Card>
+  
+  <Card title="Vessel Details" icon="ship">
+    Information about:
+    - Vessel name carrying package
+    - Vessel schedule status
+  </Card>
+</CardGroup>
+
+### Departure Time Tracking
+
+For packages not yet collected, the dashboard shows vessel departure information:
+
+```php
+// CustomerController.php:61-68
+if($LastPack){
+    if($LastPack->status != 'COLLECTED'){
+        $DepatrueTime = schedule::where([['id',$LastPack->vessel_id],
+                                          ['status','!=','COMPLETE']])
+            ->orderByDesc('id')
+            ->first();
+        
+        $DepatrueTime->isDepatured = false;
+        if($DepatrueTime->dep_date <= $datetime){
+            $DepatrueTime->isDepatured = true;
+        }
+        
+        return view('customer.dashboard',
+                   ['transaction'=>$transaction,
+                    'LastPack'=>$LastPack,
+                    'DepatrueTime'=>$DepatrueTime]);
+    }
+}
+```
+
+<Note>
+The system compares current time with scheduled departure to show if the vessel has already departed.
+</Note>
+
+## Transaction History
+
+Customers can view all their shipments:
+
+```php
+// CustomerController.php:78-82
+public function transaction()
+{
+    $transaction = package::where('customer_id',auth()->user()->custid)
+        ->orderByDesc('id')
+        ->get();
+    return view('customer.transaction',['transaction'=>$transaction]);
+}
+```
+
+Transactions are sorted by most recent first, showing:
+- Package ID
+- Date created
+- Destination
+- Current status
+- Total amount
+
+## Settlement Tracking
+
+The settlement view shows payment status for all transactions:
+
+```php
+// CustomerController.php:83-105
+public function settlement()
+{
+    $transaction = package::where('customer_id',auth()->user()->custid)
+        ->orderByDesc('id')
+        ->get();
+    $items = shipment::orderByDesc('packages_id')->get();
+    $receivables = receivables::orderByDesc('packID')->get();
+    
+    foreach($transaction as $trans){
+        $total = 0;
+        
+        // Check payment status
+        foreach($receivables as $receiv){
+            if($trans->id == $receiv->packID){
+                $trans->paymentStatus = "PAID";
+                break;
+            }
+            $trans->paymentStatus = "CREDIT";
+        }
+        
+        // Calculate total
+        foreach($items as $item){
+            if($trans->id == $item->packages_id){
+                $total += $item->qty * $item->unit_price;
+            }
+        }
+        $trans->total = $total;
+    }
+    
+    return view('customer.settlement',['transaction'=>$transaction]);
+}
+```
+
+### Payment Status
+
+Each transaction shows:
+- **PAID**: Payment has been recorded in receivables
+- **CREDIT**: No payment record found (POD or pending)
+
+### Total Calculation
+
+The system calculates totals by:
+1. Finding all shipment items for the package
+2. Multiplying quantity × unit price for each item
+3. Summing all item totals
+
+## Schedule Viewing
+
+Customers can view vessel schedules:
+
+```php
+// CustomerController.php:73-77
+public function schedule()
+{
+    $schedules = schedule::orderByDesc('id')->get();
+    return view('customer.schedule',['schedules'=>$schedules]);
+}
+```
+
+This helps customers:
+- Plan shipment timing
+- Check departure dates
+- View vessel availability
+
+## Guest Customers
+
+The system supports anonymous shipments through a special guest account:
+
+```php
+// ShipmentController.php:124-136
+$NewCustomer = new customer([
+    'CustNumber' => 0,
+    'CustName' => "Guest"
+]);
+
+if (customer::where('CustNumber', 0)->exists()){
+    $Cust = customer::all('id','CustNumber');
+} else {
+    $NewCustomer->save();
+    $Cust = customer::all('id','CustNumber');
+}
+```
+
+<Warning>
+Guest customers use `CustNumber = 0` and cannot access the customer dashboard. These are for walk-in or one-time shipments.
+</Warning>
+
+## Package Association
+
+When creating a package, the customer is linked:
+
+```php
+// CustomerController.php:159-183
+if(Session::has('newpackage')){
+    // Update existing package with customer details
+    package::where('id', Session::get('newpackage')->id)->update([
+        'CustAddress' => request('CustAddress'),
+        'from' => Request('LFrom'),
+        'to' => Request('ULTo'),
+        'customer_id' => $CustID,
+        'vessel_id' => auth()->user()->boatid,
+    ]);
+} else {
+    // Create new package
+    $newpackage = new package([
+        'CustAddress' => request('CustAddress'),
+        'from' => Request('LFrom'),
+        'to' => Request('ULTo'),
+        'customer_id' => $CustID,
+        'vessel_id' => auth()->user()->boatid,
+    ]);
+    $newpackage->save();
+}
+```
+
+## Customer Dashboard Navigation
+
+The customer interface provides:
+
+1. **Dashboard** (`/customer/dashboard`) - Overview and latest package
+2. **Transactions** (`/customer/transaction`) - All shipment history
+3. **Settlement** (`/customer/settlement`) - Payment and billing status
+4. **Schedule** (`/customer/schedule`) - Vessel departure schedules
+5. **Settings** (`/customer/setting`) - Account preferences
+
+## Related Features
+
+- [Shipment Management](/features/shipment-management) - Create packages for customers
+- [Package Tracking](/features/package-tracking) - Track customer packages
+- [Collection & Delivery](/features/collection-delivery) - Complete customer deliveries
+
+## Best Practices
+
+1. **Accurate Information**: Ensure customer numbers are correct for proper record linkage
+2. **Name Updates**: The system auto-updates names, but verify for important changes
+3. **Address Verification**: Double-check delivery addresses during package creation
+4. **Dashboard Training**: Educate customers on using the dashboard for self-service tracking
+
+## Common Scenarios
+
+### Scenario 1: Regular Customer Returns
+
+1. Operator enters customer number during shipment creation
+2. System retrieves existing customer record
+3. Auto-fills customer name
+4. Operator verifies or updates name if needed
+5. Proceeds with package creation
+
+### Scenario 2: New Customer Registration
+
+1. Customer arrives with new shipment
+2. Operator enters new customer number and name
+3. System creates customer record
+4. Links customer to package
+5. Customer can now access dashboard with credentials
+
+### Scenario 3: Customer Checks Status Online
+
+1. Customer logs into dashboard
+2. Views last package status
+3. Sees vessel has departed (isDepatured = true)
+4. Checks settlement to confirm payment status
+5. Views transaction history for past shipments

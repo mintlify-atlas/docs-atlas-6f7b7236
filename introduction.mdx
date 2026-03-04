@@ -1,0 +1,112 @@
+---
+title: Introduction
+description: Learn about NaaleMV, a comprehensive shipping and cargo management platform for inter-island logistics in the Maldives
+---
+
+## What is NaaleMV?
+
+NaaleMV is a SaaS shipping and cargo management platform designed specifically for inter-island logistics in the Maldives. Built on Laravel 8, it streamlines the entire shipping workflow from package creation to delivery confirmation, helping vessel operators and shipping companies manage cargo efficiently across the archipelago.
+
+## Who is NaaleMV for?
+
+NaaleMV serves three primary user roles:
+
+<CardGroup cols={3}>
+  <Card title="Admin users" icon="shield">
+    Manage system settings, users, vessels, and oversee all operations across the platform
+  </Card>
+  <Card title="Vessel operators" icon="ship">
+    Create shipments, track packages, process collections, and manage cargo for their assigned vessel
+  </Card>
+  <Card title="Customers" icon="user">
+    Track shipments, view transaction history, check vessel schedules, and manage account settings
+  </Card>
+</CardGroup>
+
+## Key capabilities
+
+### Shipment creation and tracking
+
+Create and track packages through a complete lifecycle. Each package moves through a defined workflow:
+
+```php
+// Package status workflow in app/Models/package.php
+'status' => 'LOADING'  // Initial state when package is created
+           → 'LOADED'   // Confirmed and ready for transport
+           → 'COLLECTED' // Delivered to recipient
+```
+
+Shipments are created through the `ShipmentController` (app/Http/Controllers/ShipmentController.php:98) and support:
+- Multiple items per package
+- Image uploads for each item
+- Automated total calculation
+- Category-based pricing
+
+### Package management
+
+Manage packages with comprehensive details:
+
+- **Customer information**: Name, contact number, and delivery address
+- **Route details**: Origin (`from`) and destination (`to`) islands
+- **Vessel assignment**: Link packages to specific vessels for transport
+- **Item inventory**: Track quantity, unit price, and category for each item in a package
+
+### Inter-island delivery system
+
+NaaleMV supports the Maldivian geographical structure with:
+
+- **Atoll-based organization**: Packages are organized by atoll codes (database/migrations/2022_09_05_075130_create_atolls_table.php:16)
+- **Island mapping**: Each island is linked to its atoll with unique codes (database/migrations/2022_09_05_095032_create_islands_table.php:16)
+- **Vessel scheduling**: Track departure dates and island visits (database/migrations/2022_10_22_105556_create_schedules_table.php:16)
+
+### Payment processing
+
+Flexible payment options through the `PackageController` (app/Http/Controllers/PackageController.php:54):
+
+- **Cash payments**: Immediate payment recording
+- **Transfer payments**: Upload payment slip verification
+- **Payment on delivery (POD)**: Collect payment upon package delivery
+
+Payment details are stored in the `receivables` table with full audit trail:
+
+```php
+// Payment record structure in app/Models/receivables.php
+protected $fillable = [
+    'packID',        // Links to package
+    'paymentType',   // CASH or TRANSFER
+    'payslip',       // Transfer receipt image path
+    'total',         // Total amount
+];
+```
+
+### Multi-language support
+
+NaaleMV supports both English and Dhivehi throughout the application. Language preference is stored per user and affects:
+
+- Interface views (routes/web.php:24)
+- Dashboard displays
+- Reports and forms
+
+## Authentication and security
+
+NaaleMV uses Laravel Fortify for robust authentication (config/fortify.php):
+
+- Email verification required for access
+- Password reset functionality
+- Profile management
+- Role-based access control via the `rank` field (database/migrations/2014_10_12_000000_create_users_table.php:21)
+
+<Note>
+The platform uses contact numbers as the username field for authentication (config/fortify.php:49), which is common practice in the Maldives.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Get started" icon="rocket" href="/getting-started">
+    Set up your NaaleMV installation and configure your first vessel
+  </Card>
+  <Card title="Package workflow" icon="box" href="/features/package-tracking">
+    Learn how to create and manage packages through the complete lifecycle
+  </Card>
+</CardGroup>

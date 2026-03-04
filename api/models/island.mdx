@@ -1,0 +1,181 @@
+---
+title: 'Island Model'
+description: 'Islands in the Maldives with atoll associations'
+---
+
+## Overview
+
+The Island model represents islands in the Maldives. Each island has a name, code, and belongs to an atoll. Islands are used to specify delivery destinations and track geographical locations for package routing.
+
+## Database Table
+
+**Table name:** `islands`
+
+## Schema Definition
+
+The islands table schema is defined in the migration file `2022_09_05_095032_create_islands_table.php`:
+
+### Columns
+
+<ResponseField name="id" type="bigInteger" required>
+  Auto-incrementing primary key
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Name of the island
+</ResponseField>
+
+<ResponseField name="code" type="string" required>
+  Short code or abbreviation for the island
+</ResponseField>
+
+<ResponseField name="atoll_id" type="foreignId" required>
+  Foreign key reference to the atoll that this island belongs to
+</ResponseField>
+
+<ResponseField name="created_at" type="timestamp">
+  Timestamp when the island record was created
+</ResponseField>
+
+<ResponseField name="updated_at" type="timestamp">
+  Timestamp when the island record was last updated
+</ResponseField>
+
+### Constraints
+
+- `atoll_id` has a foreign key constraint to the `atoll` table
+
+## Model Configuration
+
+**Location:** `app/Models/islands.php`
+
+### Fillable Fields
+
+The following fields are mass-assignable:
+
+```php
+protected $fillable = [
+    'name',
+    'code',
+    'atoll_id',
+];
+```
+
+## Relationships
+
+<Expandable title="belongsTo: Atoll">
+  Each island belongs to an atoll via the `atoll_id` foreign key. Atolls are administrative divisions in the Maldives that group multiple islands.
+</Expandable>
+
+## Example Usage
+
+### Creating a New Island
+
+From `ShipmentController.php:68-74`:
+
+```php
+$atoll = atoll::where('name', $request->atoll)->first();
+
+$newIslands = new islands([
+    'atoll_id' => $atoll->id,
+    'name' => $request->name,
+    'code' => $request->code,
+]);
+$newIslands->save();
+```
+
+### Creating Atoll if Not Exists
+
+From `ShipmentController.php:59-65`:
+
+```php
+if(!atoll::where('name', strtoupper($request->atoll))->exists()) {
+    $atoll = new atoll([
+        'name' => strtoupper($request->atoll),
+        'code' => '-',
+    ]);
+    $atoll->save();
+}
+```
+
+### Retrieving All Islands (Sorted)
+
+From `ShipmentController.php:47`:
+
+```php
+$allIslands = islands::orderBy('name', 'asc')->get();
+```
+
+### Getting Islands for Customer Selection
+
+From `CustomerController.php:29-32`:
+
+```php
+$selectedIsland = islands::orderBy('name')->get();
+
+if($request->exists('island')) {
+    $selectedIsland = islands::where('id', $request->island)->get();
+}
+```
+
+### Island Creation with Validation
+
+From `ShipmentController.php:54-58`:
+
+```php
+$this->validate($request, [
+    'atoll' => ['required'],
+    'name' => ['required'],
+    'code' => ['required'],
+]);
+```
+
+## Atoll Model
+
+The Island model has a dependency on the Atoll model. Here's the structure:
+
+**Atoll fillable fields:**
+```php
+protected $fillable = [
+    'name',
+    'code',
+];
+```
+
+### Atoll Relationship
+
+<Expandable title="hasMany: Islands">
+  An atoll can contain multiple islands. This is the inverse of the island's belongsTo relationship.
+</Expandable>
+
+## Validation Rules
+
+When creating a new island, the following validation applies:
+
+- `atoll`: Required
+- `name`: Required
+- `code`: Required
+
+## Notes
+
+- Island names are stored as provided, while atoll names are converted to uppercase
+- The system automatically creates a new atoll if it doesn't exist when adding an island
+- Islands are typically displayed in alphabetical order by name
+- The `code` field provides a short abbreviation for the island, useful for compact displays
+- Islands are used in the package creation process to specify delivery destinations
+- The relationship with atolls helps organize islands by geographical and administrative divisions
+
+## Geographic Context
+
+The Maldives consists of 26 atolls containing approximately 200 inhabited islands. The Island model helps:
+
+- Organize delivery destinations by atoll
+- Route packages efficiently
+- Display location information to customers
+- Support filtering and searching by geographical area
+
+## Related Models
+
+- **Atoll**: Parent administrative division that contains multiple islands
+- **Vessel**: Vessels service specific islands as destinations
+- **Package**: Packages specify `from` and `to` locations, which can reference islands

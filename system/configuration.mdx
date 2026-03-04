@@ -1,0 +1,413 @@
+---
+title: Configuration
+description: Complete guide to configuring NaaleMV environment variables and settings
+---
+
+## Environment Configuration
+
+NaaleMV uses Laravel's environment configuration system. All configuration is managed through the `.env` file in the application root.
+
+<Warning>
+Never commit the `.env` file to version control. Use `.env.example` as a template and keep sensitive credentials secure.
+</Warning>
+
+## Creating Your Configuration
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Generate application key
+php artisan key:generate
+```
+
+## Application Settings
+
+### Basic Application Configuration
+
+```bash
+APP_NAME=Laravel
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost
+```
+
+| Variable | Description | Values | Required |
+|----------|-------------|--------|----------|
+| `APP_NAME` | Application name displayed in emails and notifications | Any string | Yes |
+| `APP_ENV` | Environment mode | `local`, `production`, `staging` | Yes |
+| `APP_KEY` | Encryption key (generated automatically) | base64 string | Yes |
+| `APP_DEBUG` | Enable debug mode (shows detailed errors) | `true`, `false` | Yes |
+| `APP_URL` | Base URL of your application | Valid URL | Yes |
+
+<Warning>
+**Production Environment**: Always set `APP_ENV=production` and `APP_DEBUG=false` in production to prevent sensitive information leakage.
+</Warning>
+
+## Logging Configuration
+
+```bash
+LOG_CHANNEL=stack
+LOG_DEPRECATIONS_CHANNEL=null
+LOG_LEVEL=debug
+```
+
+| Variable | Description | Values |
+|----------|-------------|--------|
+| `LOG_CHANNEL` | Logging channel | `stack`, `single`, `daily`, `syslog` |
+| `LOG_DEPRECATIONS_CHANNEL` | Channel for deprecation warnings | `null` or channel name |
+| `LOG_LEVEL` | Minimum log level | `debug`, `info`, `notice`, `warning`, `error`, `critical`, `alert`, `emergency` |
+
+## Database Configuration
+
+### MySQL Configuration
+
+```bash
+DB_CONNECTION=mysql
+DB_HOST=192.168.100.13
+DB_PORT=3322
+DB_DATABASE=naalemvdb
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `DB_CONNECTION` | Database driver | `mysql` | Yes |
+| `DB_HOST` | Database host address | `127.0.0.1` | Yes |
+| `DB_PORT` | Database port | `3306` (3322 for Docker) | Yes |
+| `DB_DATABASE` | Database name | `naalemvdb` | Yes |
+| `DB_USERNAME` | Database username | `root` | Yes |
+| `DB_PASSWORD` | Database password | Empty string | Yes |
+
+<Warning>
+**Docker Setup**: If using Docker, the default port is `3322` (mapped to container's 3306). For standard MySQL installations, use port `3306`.
+</Warning>
+
+### Testing Database Connection
+
+```bash
+# Test connection using artisan tinker
+php artisan tinker
+>>> DB::connection()->getPdo();
+
+# Alternative: Run a simple query
+php artisan db:show
+```
+
+## Cache Configuration
+
+```bash
+CACHE_DRIVER=file
+MEMCACHED_HOST=127.0.0.1
+```
+
+| Variable | Description | Options |
+|----------|-------------|--------|
+| `CACHE_DRIVER` | Cache storage driver | `file`, `database`, `redis`, `memcached`, `array` |
+| `MEMCACHED_HOST` | Memcached server host | IP address |
+
+## Session Configuration
+
+```bash
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
+```
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `SESSION_DRIVER` | Session storage driver | `file`, `cookie`, `database`, `redis`, `memcached` |
+| `SESSION_LIFETIME` | Session lifetime in minutes | `120` |
+
+<Warning>
+For production environments with multiple servers, use `database` or `redis` session driver instead of `file` for proper session synchronization.
+</Warning>
+
+## Queue Configuration
+
+```bash
+QUEUE_CONNECTION=sync
+```
+
+| Variable | Description | Options |
+|----------|-------------|--------|
+| `QUEUE_CONNECTION` | Queue driver | `sync`, `database`, `redis`, `sqs`, `beanstalkd` |
+
+**Note**: `sync` processes queues immediately (no background worker). For production, consider using `database` or `redis`.
+
+## Redis Configuration
+
+```bash
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+```
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `REDIS_HOST` | Redis server host | `127.0.0.1` |
+| `REDIS_PASSWORD` | Redis password | `null` |
+| `REDIS_PORT` | Redis port | `6379` |
+
+## Mail Configuration
+
+### SMTP Settings
+
+```bash
+MAIL_DRIVER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=demo.naalemv@gmail.com
+MAIL_PASSWORD=bhugrnhooligjfth
+MAIL_ENCRYPTION=tls
+MAIL_FROM_NAME=Naalemv
+```
+
+| Variable | Description | Example |
+|----------|-------------|--------|
+| `MAIL_DRIVER` | Mail transport driver | `smtp`, `sendmail`, `mailgun`, `ses` |
+| `MAIL_HOST` | SMTP server hostname | `smtp.gmail.com`, `smtp.mailtrap.io` |
+| `MAIL_PORT` | SMTP port | `587` (TLS), `465` (SSL), `25` |
+| `MAIL_USERNAME` | SMTP username/email | Your email address |
+| `MAIL_PASSWORD` | SMTP password or app password | App-specific password |
+| `MAIL_ENCRYPTION` | Encryption method | `tls`, `ssl`, `null` |
+| `MAIL_FROM_NAME` | Default sender name | Your application name |
+
+<Warning>
+**Gmail Users**: You must use an [App Password](https://support.google.com/accounts/answer/185833) instead of your regular password. Enable 2-factor authentication and generate an app password in your Google account settings.
+</Warning>
+
+### Testing Email Configuration
+
+```bash
+php artisan tinker
+>>> Mail::raw('Test email', function($msg) { $msg->to('test@example.com')->subject('Test'); });
+```
+
+### Popular SMTP Providers
+
+<CodeGroup>
+
+```bash Gmail
+MAIL_DRIVER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password
+MAIL_ENCRYPTION=tls
+```
+
+```bash Mailtrap (Testing)
+MAIL_DRIVER=smtp
+MAIL_HOST=smtp.mailtrap.io
+MAIL_PORT=2525
+MAIL_USERNAME=your-mailtrap-username
+MAIL_PASSWORD=your-mailtrap-password
+MAIL_ENCRYPTION=tls
+```
+
+```bash SendGrid
+MAIL_DRIVER=smtp
+MAIL_HOST=smtp.sendgrid.net
+MAIL_PORT=587
+MAIL_USERNAME=apikey
+MAIL_PASSWORD=your-sendgrid-api-key
+MAIL_ENCRYPTION=tls
+```
+
+</CodeGroup>
+
+## Broadcasting Configuration
+
+```bash
+BROADCAST_DRIVER=log
+```
+
+| Variable | Description | Options |
+|----------|-------------|--------|
+| `BROADCAST_DRIVER` | Broadcasting driver | `log`, `pusher`, `redis`, `null` |
+
+## File Storage Configuration
+
+```bash
+FILESYSTEM_DRIVER=local
+```
+
+| Variable | Description | Options |
+|----------|-------------|--------|
+| `FILESYSTEM_DRIVER` | Default filesystem disk | `local`, `public`, `s3` |
+
+### AWS S3 Configuration (Optional)
+
+```bash
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=
+AWS_USE_PATH_STYLE_ENDPOINT=false
+```
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `AWS_ACCESS_KEY_ID` | AWS access key | If using S3 |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | If using S3 |
+| `AWS_DEFAULT_REGION` | AWS region | If using S3 |
+| `AWS_BUCKET` | S3 bucket name | If using S3 |
+| `AWS_USE_PATH_STYLE_ENDPOINT` | Use path-style endpoint | If using S3 |
+
+## Pusher Configuration (Optional)
+
+```bash
+PUSHER_APP_ID=
+PUSHER_APP_KEY=
+PUSHER_APP_SECRET=
+PUSHER_APP_CLUSTER=mt1
+
+MIX_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
+MIX_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
+```
+
+Required only if using Pusher for real-time broadcasting.
+
+## Multi-Language Configuration
+
+NaaleMV supports multiple languages through the user profile settings.
+
+### Application Locale Settings
+
+In `config/app.php`:
+
+```php
+'locale' => 'en',
+'fallback_locale' => 'en',
+```
+
+### User Language Preference
+
+Users can set their preferred language in their profile. The language preference is stored in the `lang` field of the `users` table.
+
+**Supported Operations**:
+- Default locale: English (`en`)
+- User-specific language stored in database
+- Fallback to English if translation missing
+
+## Configuration Caching
+
+For better performance in production:
+
+```bash
+# Cache all configuration files
+php artisan config:cache
+
+# Clear configuration cache
+php artisan config:clear
+```
+
+<Warning>
+When configuration is cached, changes to `.env` file are ignored. Always run `php artisan config:clear` after updating `.env` in production.
+</Warning>
+
+## Environment-Specific Configuration
+
+### Development Environment
+
+```bash
+APP_ENV=local
+APP_DEBUG=true
+LOG_LEVEL=debug
+CACHE_DRIVER=file
+QUEUE_CONNECTION=sync
+```
+
+### Production Environment
+
+```bash
+APP_ENV=production
+APP_DEBUG=false
+LOG_LEVEL=error
+CACHE_DRIVER=redis
+QUEUE_CONNECTION=redis
+SESSION_DRIVER=redis
+```
+
+## Security Best Practices
+
+1. **Never commit `.env` to version control**
+   ```bash
+   # Ensure .env is in .gitignore
+   echo ".env" >> .gitignore
+   ```
+
+2. **Use strong database passwords**
+   ```bash
+   DB_PASSWORD=your-strong-random-password
+   ```
+
+3. **Disable debug mode in production**
+   ```bash
+   APP_DEBUG=false
+   ```
+
+4. **Use HTTPS in production**
+   ```bash
+   APP_URL=https://yourdomain.com
+   ```
+
+5. **Protect sensitive files**
+   ```bash
+   chmod 600 .env
+   ```
+
+## Verifying Configuration
+
+```bash
+# Check current configuration
+php artisan config:show
+
+# Check database configuration
+php artisan config:show database
+
+# Check mail configuration
+php artisan config:show mail
+
+# List all environment variables
+php artisan env
+```
+
+## Common Configuration Issues
+
+### Issue: Application Key Not Set
+
+```bash
+php artisan key:generate
+```
+
+### Issue: Database Connection Failed
+
+1. Verify database credentials in `.env`
+2. Check if database exists: `mysql -u root -p -e "SHOW DATABASES;"`
+3. Test connection: `php artisan db:show`
+
+### Issue: Mail Not Sending
+
+1. Verify SMTP credentials
+2. Check firewall/port access
+3. Test with tinker: `php artisan tinker` then `Mail::raw('test', fn($m) => $m->to('test@example.com'));`
+
+### Issue: Cache Not Clearing
+
+```bash
+php artisan cache:clear
+php artisan config:clear
+php artisan route:clear
+php artisan view:clear
+```
+
+## Next Steps
+
+After configuration:
+- Set up the database schema in [Database Setup](/system/database-setup)
+- Review application security settings
+- Configure backup strategies
+- Set up monitoring and logging
