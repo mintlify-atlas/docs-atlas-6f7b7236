@@ -1,0 +1,101 @@
+{
+  "projectType": "saas",
+  "projectName": "NaaleMV",
+  "projectDescription": "A shipping and cargo management platform for inter-island logistics in the Maldives.",
+  "theme": "maple",
+  "primaryColor": "#040404",
+  "lightColor": "#ef370f",
+  "darkColor": "#f79d72",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "getting-started"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/shipment-management",
+              "features/package-tracking",
+              "features/customer-management",
+              "features/collection-delivery"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/vessel-operators",
+              "guides/customers",
+              "guides/admin-settings"
+            ]
+          },
+          {
+            "group": "System",
+            "pages": [
+              "system/installation",
+              "system/configuration",
+              "system/database-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Controllers",
+            "pages": [
+              "api/shipment-controller",
+              "api/customer-controller",
+              "api/package-controller",
+              "api/collection-controller",
+              "api/category-controller"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/shipment",
+              "api/models/package",
+              "api/models/customer",
+              "api/models/vessel",
+              "api/models/island"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Shipment creation and tracking",
+    "Package management with status tracking (LOADING, LOADED, COLLECTED)",
+    "Customer account management with dashboard",
+    "Inter-island delivery management with atoll/island mapping",
+    "Payment processing (Cash and Transfer)",
+    "Vessel/boat scheduling and management",
+    "Multi-language support (English and Dhivehi)",
+    "Collection and receivables tracking",
+    "Category-based item classification",
+    "User authentication and role-based access (admin, vessel operator, customer)"
+  ],
+  "publicApiSurface": [
+    "ShipmentController - index(), store(), create(), destroy()",
+    "CustomerController - index(), store(), dashboard(), schedule(), transaction(), settlement(), setting()",
+    "PackageController - index(), store()",
+    "CollectionController - index(), clam(), search(), complete(), edit()",
+    "CategoryController - CRUD operations for shipment categories",
+    "SettingController - AddNewUser(), update(), ChangePassword()",
+    "Customer Model - CustNumber, CustName fields",
+    "Package Model - CustAddress, from, to, status fields",
+    "Shipment Model - qty, unit_price, category_id, packages_id fields",
+    "Vessel Model - vessel management",
+    "Island Model - atoll_id, name, code fields",
+    "Schedule Model - vessel scheduling with departure times"
+  ]
+}
